@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Connections Matrix — Dashboard</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <!-- Password gate -->
+  <div id="passwordGate" class="dash-layout">
+    <div class="dash-header"><h1>Creating Connections — Dashboard</h1></div>
+    <div class="password-gate">
+      <div class="password-card">
+        <h2>Facilitator Access</h2>
+        <p>Enter the admin password to view results.</p>
+        <input type="password" id="passwordInput" placeholder="Password" autocomplete="current-password">
+        <button class="btn-submit" id="passwordSubmit">Enter Dashboard</button>
+        <p class="password-error" id="passwordError">Incorrect password. Try again.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Main dashboard (hidden until authenticated) -->
+  <div id="dashMain" class="dash-layout" style="display:none;">
+    <div class="dash-header">
+      <h1>Creating Connections — Dashboard</h1>
+      <div class="export-group">
+        <button class="btn-export" id="exportMatrix">&#8595; Matrix CSV</button>
+        <button class="btn-export" id="exportRatings">&#8595; Ratings CSV</button>
+        <button class="btn-export" id="exportRankings">&#8595; Rankings CSV</button>
+      </div>
+    </div>
+
+    <div class="dash-body">
+      <nav class="dash-nav">
+        <button class="active" data-tab="matrix">Compatibility Matrix</button>
+        <button data-tab="matches">Preference Matches</button>
+        <button data-tab="progress">Submission Tracker</button>
+        <hr style="border:none;border-top:1px solid var(--border);margin:12px 0;">
+        <button data-tab="exports" style="font-size:.8rem;">Exports</button>
+        <button data-tab="settings" style="font-size:.8rem;">Settings</button>
+      </nav>
+
+      <main class="dash-content">
+
+        <!-- Matrix tab -->
+        <div class="tab-panel active" id="tab-matrix">
+          <div class="section-header">
+            <h2>Compatibility Matrix</h2>
+            <small id="matrixUpdated" style="color:var(--text-muted);font-size:.8rem;"></small>
+          </div>
+          <p style="font-size:.85rem;color:var(--text-muted);margin-bottom:12px;">
+            Average score per pair combination (1–5). Click a cell for details.
+            <span style="margin-left:8px;">
+              <span style="background:#dcfce7;padding:2px 8px;border-radius:4px;font-size:.75rem;">&#8805; 4.0</span>
+              <span style="background:#fef9c3;padding:2px 8px;border-radius:4px;font-size:.75rem;margin-left:4px;">3.0–3.9</span>
+              <span style="background:#fee2e2;padding:2px 8px;border-radius:4px;font-size:.75rem;margin-left:4px;">&lt; 3.0</span>
+              <span style="background:#f8fafc;padding:2px 8px;border-radius:4px;font-size:.75rem;margin-left:4px;">No data</span>
+            </span>
+          </p>
+          <div class="matrix-wrap">
+            <table class="matrix-table" id="matrixTable">
+              <thead><tr id="matrixHeader"></tr></thead>
+              <tbody id="matrixBody"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Matches tab -->
+        <div class="tab-panel" id="tab-matches">
+          <div class="section-header"><h2>Preference Matches</h2></div>
+
+          <h3 style="font-size:.85rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px;">
+            Mutual matches
+          </h3>
+          <div class="match-list" id="mutualList">
+            <p style="color:var(--text-muted);font-size:.9rem;">No mutual matches yet.</p>
+          </div>
+
+          <h3 style="font-size:.85rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin:20px 0 10px;">
+            One-sided preferences
+          </h3>
+          <div class="match-list" id="oneSidedList">
+            <p style="color:var(--text-muted);font-size:.9rem;">No data yet.</p>
+          </div>
+        </div>
+
+        <!-- Progress tab -->
+        <div class="tab-panel" id="tab-progress">
+          <div class="section-header"><h2>Submission Tracker</h2></div>
+          <div class="progress-section" id="progressSection">
+            <p style="color:var(--text-muted);font-size:.9rem;">Loading…</p>
+          </div>
+        </div>
+
+        <!-- Settings tab -->
+        <div class="tab-panel" id="tab-settings">
+          <div class="section-header"><h2>Settings</h2></div>
+
+          <div class="settings-section">
+            <h3>Edit Pair Names</h3>
+            <p>Click a name to edit it. Changes are saved immediately.</p>
+            <div class="pair-names-grid" id="pairNamesGrid"></div>
+          </div>
+
+          <div class="settings-section">
+            <h3>New Session</h3>
+            <p>Start a fresh session. This will clear all ratings and rankings.</p>
+            <div class="new-session-form">
+              <div class="session-field">
+                <label for="numSem3">Semester 3 pairs</label>
+                <input type="number" id="numSem3" min="1" max="30" value="10">
+              </div>
+              <div class="session-field">
+                <label for="numSem12">Semester 1 & 2 pairs</label>
+                <input type="number" id="numSem12" min="1" max="30" value="10">
+              </div>
+              <button class="btn-submit btn-danger" id="newSessionBtn">Reset &amp; Start New Session</button>
+            </div>
+          </div>
+
+          <div class="settings-section">
+            <h3>Matrix Criteria</h3>
+            <p>Customise the three compatibility axes. Changes apply to new ratings only.</p>
+            <div id="criteriaEditor" class="criteria-editor"></div>
+            <button class="btn-submit" id="saveCriteriaBtn" style="max-width:320px;margin-top:12px;">Save Criteria</button>
+          </div>
+        </div>
+
+        <!-- Exports tab -->
+        <div class="tab-panel" id="tab-exports">
+          <div class="section-header"><h2>Exports</h2></div>
+          <p style="font-size:.875rem;color:var(--text-muted);margin-bottom:20px;">Download data as CSV files.</p>
+          <div style="display:flex;flex-direction:column;gap:12px;max-width:320px;">
+            <button class="btn-submit" id="exportMatrix2">Download Compatibility Matrix</button>
+            <button class="btn-submit" id="exportRatings2" style="background:var(--text-muted);">Download All Ratings</button>
+            <button class="btn-submit" id="exportRankings2" style="background:var(--text-muted);">Download Final Rankings</button>
+          </div>
+        </div>
+
+      </main>
+    </div>
+  </div>
+
+  <!-- Cell detail modal -->
+  <div class="modal-overlay" id="modalOverlay">
+    <div class="modal">
+      <button class="close-btn" id="modalClose">&times;</button>
+      <h3 id="modalTitle"></h3>
+      <div id="modalAvg" style="font-size:1.2rem;font-weight:700;margin-bottom:14px;"></div>
+      <div id="modalDetails"></div>
+    </div>
+  </div>
+
+  <script src="/dashboard.js"></script>
+</body>
+</html>

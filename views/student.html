@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <title>Creating Connections — Compatibility Matrix</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <div class="app">
+    <header class="top-bar">
+      <h1>Creating Connections</h1>
+      <select id="yourPair" class="pair-pill">
+        <option value="">Your pair</option>
+      </select>
+    </header>
+
+    <div id="banner" class="banner" role="alert"></div>
+
+    <main class="student-main">
+      <div class="meet-row">
+        <select id="metPair" disabled>
+          <option value="">Who did you meet?</option>
+        </select>
+      </div>
+
+      <p class="matrix-label">Compatibility Matrix</p>
+
+      <div class="matrix-hero">
+        <svg id="radarSvg" viewBox="0 0 400 420"></svg>
+      </div>
+
+      <div class="score-controls">
+        <div class="score-row" data-field="skillComp" data-color="teal">
+          <span class="score-name">Skills</span>
+          <div class="score-btns">
+            <button type="button" class="score-btn" data-value="1">1</button>
+            <button type="button" class="score-btn" data-value="2">2</button>
+            <button type="button" class="score-btn" data-value="3">3</button>
+            <button type="button" class="score-btn" data-value="4">4</button>
+            <button type="button" class="score-btn" data-value="5">5</button>
+          </div>
+          <div class="score-ends"><span>Overlapping</span><span>Complementary</span></div>
+        </div>
+        <div class="score-row" data-field="projectAlign" data-color="purple">
+          <span class="score-name">Interest</span>
+          <div class="score-btns">
+            <button type="button" class="score-btn" data-value="1">1</button>
+            <button type="button" class="score-btn" data-value="2">2</button>
+            <button type="button" class="score-btn" data-value="3">3</button>
+            <button type="button" class="score-btn" data-value="4">4</button>
+            <button type="button" class="score-btn" data-value="5">5</button>
+          </div>
+          <div class="score-ends"><span>Different</span><span>Similar</span></div>
+        </div>
+        <div class="score-row" data-field="commFit" data-color="sky">
+          <span class="score-name">Communication</span>
+          <div class="score-btns">
+            <button type="button" class="score-btn" data-value="1">1</button>
+            <button type="button" class="score-btn" data-value="2">2</button>
+            <button type="button" class="score-btn" data-value="3">3</button>
+            <button type="button" class="score-btn" data-value="4">4</button>
+            <button type="button" class="score-btn" data-value="5">5</button>
+          </div>
+          <div class="score-ends"><span>Warming up</span><span>Natural flow</span></div>
+        </div>
+      </div>
+
+      <input type="text" id="notes" class="notes-input" placeholder="Notes (optional)" maxlength="200">
+
+      <button type="button" class="btn-submit" id="submitBtn">Submit</button>
+    </main>
+
+    <div class="name-overlay" id="nameOverlay">
+      <div class="name-modal">
+        <h2>What are your names?</h2>
+        <p>Enter both first names for your pair</p>
+        <div class="name-inputs">
+          <input type="text" id="name1" placeholder="First name" maxlength="12" autocomplete="off">
+          <span class="name-amp">&amp;</span>
+          <input type="text" id="name2" placeholder="First name" maxlength="12" autocomplete="off">
+        </div>
+        <button type="button" class="btn-submit" id="saveNames">Save</button>
+        <button type="button" class="name-skip" id="skipNames">Skip for now</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/student.js"></script>
+</body>
+</html>
