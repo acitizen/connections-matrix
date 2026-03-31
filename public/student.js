@@ -6,7 +6,7 @@ let isEditing = false; // true when viewing a previously submitted rating
 
 const FIELDS = ['skillComp', 'projectAlign', 'commFit'];
 let LABELS = ['Skills', 'Interest', 'Comms'];
-const COLORS = ['115,204,204', '217,166,230', '140,209,240'];
+const COLORS = ['115,204,204', '217,166,230', '170,130,255'];
 
 function shortLabel(name) {
   if (name.length <= 8) return name;
@@ -376,7 +376,7 @@ function renderChart() {
       const r = Math.max(v, 0) === 0 ? 0 : (v / 5) * MAX_R;
       return `${CX + r * Math.cos(ANGLES[i])},${CY + r * Math.sin(ANGLES[i])}`;
     }).join(' ');
-    html += `<polygon points="${dataPts}" fill="rgba(140,209,240,.1)" stroke="rgba(140,209,240,.45)" stroke-width="2.5" stroke-linejoin="round"/>`;
+    html += `<polygon points="${dataPts}" fill="rgba(200,180,255,.1)" stroke="rgba(200,180,255,.45)" stroke-width="2.5" stroke-linejoin="round"/>`;
   }
 
   // Draggable vertex dots
