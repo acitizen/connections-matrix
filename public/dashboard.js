@@ -78,6 +78,7 @@ function bindDashEvents() {
   // Settings
   document.getElementById('newSessionBtn').addEventListener('click', handleNewSession);
   document.getElementById('saveCriteriaBtn').addEventListener('click', handleSaveCriteria);
+  document.getElementById('bulkNamesBtn').addEventListener('click', handleBulkNames);
   loadPairNames();
   loadCriteria();
 }
@@ -157,7 +158,7 @@ function showCellModal(s2Label, s1Label, cell) {
     div.className = 'rating-detail';
     const rowAvg = ((d.skillComp + d.projectAlign + d.commFit) / 3).toFixed(2);
     div.innerHTML = `
-      <div class="detail-header">${d.rater} rated ${d.rated} &mdash; Round ${d.round} &mdash; avg ${rowAvg}</div>
+      <div class="detail-header">${d.rater} rated ${d.rated} &mdash; avg ${rowAvg}</div>
       <div class="scores">
         <div class="score-item"><span>Skill: </span><span>${d.skillComp}/5</span></div>
         <div class="score-item"><span>Project: </span><span>${d.projectAlign}/5</span></div>
@@ -236,18 +237,17 @@ async function loadProgress() {
   renderProgress(data);
 }
 
-function renderProgress({ pairs, ratingsByPair, rankingsSubmitted }) {
+function renderProgress({ pairs, ratingCounts, rankingsSubmitted }) {
   const container = document.getElementById('progressSection');
   container.innerHTML = '';
 
   const sem3  = pairs.filter(p => p.cohort === 'sem3');
   const sem12 = pairs.filter(p => p.cohort === 'sem12');
-  const rounds = [1,2,3,4,5,6,7,8,9,10];
 
   for (const [groupLabel, group] of [['Semester 3', sem3], ['Semester 1 & 2', sem12]]) {
     const h3 = document.createElement('h3');
     h3.className = 'progress-section';
-    h3.textContent = `${groupLabel} — round ratings`;
+    h3.textContent = `${groupLabel} — Submissions`;
     container.appendChild(h3);
 
     const wrap  = document.createElement('div');
@@ -257,27 +257,25 @@ function renderProgress({ pairs, ratingsByPair, rankingsSubmitted }) {
 
     const thead = table.createTHead();
     const hrow  = thead.insertRow();
-    hrow.insertCell().textContent = 'Pair';
-    for (const r of rounds) {
-      const th = document.createElement('th');
-      th.textContent = `R${r}`;
-      hrow.appendChild(th);
-    }
+    hrow.insertCell().textContent = 'Team';
+    const ratedTh = document.createElement('th');
+    ratedTh.textContent = 'Ratings';
+    hrow.appendChild(ratedTh);
     const rankTh = document.createElement('th');
     rankTh.textContent = 'Ranking';
     hrow.appendChild(rankTh);
 
     const tbody = table.createTBody();
     for (const p of group) {
-      const tr  = tbody.insertRow();
+      const tr = tbody.insertRow();
       tr.insertCell().textContent = p.label;
-      for (const r of rounds) {
-        const td   = tr.insertCell();
-        const done = ratingsByPair[p.id]?.[r]?.length > 0;
-        td.innerHTML = done
-          ? '<span class="dot-done">&#10003;</span>'
-          : '<span class="dot-empty">&#8729;</span>';
-      }
+
+      const countTd = tr.insertCell();
+      const count = ratingCounts[p.id] || 0;
+      countTd.innerHTML = count > 0
+        ? `<span class="dot-done">${count} submitted</span>`
+        : '<span class="dot-empty">None yet</span>';
+
       const rankTd = tr.insertCell();
       const ranked = rankingsSubmitted.includes(p.id);
       rankTd.innerHTML = ranked
@@ -290,7 +288,49 @@ function renderProgress({ pairs, ratingsByPair, rankingsSubmitted }) {
   }
 }
 
-/* ── Settings: Pair Names ────────────────────────────────────────── */
+/* ── Settings: Bulk Names ───────────────────────────────────────── */
+async function handleBulkNames() {
+  const sem3Names  = document.getElementById('bulkSem3').value.trim().split('\n').filter(n => n.trim());
+  const sem12Names = document.getElementById('bulkSem12').value.trim().split('\n').filter(n => n.trim());
+
+  if (!sem3Names.length && !sem12Names.length) {
+    alert('Enter at least one name.');
+    return;
+  }
+
+  // Get current teams
+  const res  = await authFetch('/api/dashboard/progress');
+  const data = await res.json();
+  const sem3  = data.pairs.filter(p => p.cohort === 'sem3');
+  const sem12 = data.pairs.filter(p => p.cohort === 'sem12');
+
+  let updated = 0;
+  const updates = [];
+
+  for (let i = 0; i < sem3Names.length && i < sem3.length; i++) {
+    updates.push({ pairId: sem3[i].id, label: sem3Names[i].trim().slice(0, 30) });
+  }
+  for (let i = 0; i < sem12Names.length && i < sem12.length; i++) {
+    updates.push({ pairId: sem12[i].id, label: sem12Names[i].trim().slice(0, 30) });
+  }
+
+  for (const u of updates) {
+    try {
+      const r = await fetch('/api/dashboard/pair/label', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${adminPassword}` },
+        body: JSON.stringify(u),
+      });
+      const d = await r.json();
+      if (d.success) updated++;
+    } catch { /* skip */ }
+  }
+
+  alert(`${updated} team name${updated !== 1 ? 's' : ''} updated.`);
+  loadPairNames();
+}
+
+/* ── Settings: Team Names ───────────────────────────────────────── */
 async function loadPairNames() {
   const res  = await authFetch('/api/dashboard/progress');
   const data = await res.json();
@@ -358,7 +398,7 @@ async function handleNewSession() {
   const numSem3  = parseInt(document.getElementById('numSem3').value, 10);
   const numSem12 = parseInt(document.getElementById('numSem12').value, 10);
 
-  if (!confirm(`This will delete ALL ratings and rankings and create ${numSem3} Sem 3 + ${numSem12} Sem 1&2 pairs. Continue?`)) {
+  if (!confirm(`This will delete ALL ratings and rankings and create ${numSem3} Sem 3 + ${numSem12} Sem 1&2 teams. Continue?`)) {
     return;
   }
 
@@ -370,7 +410,7 @@ async function handleNewSession() {
     });
     const data = await res.json();
     if (data.success) {
-      alert(`New session created: ${data.sem3} Sem 3 pairs + ${data.sem12} Sem 1&2 pairs. Refreshing…`);
+      alert(`New session created: ${data.sem3} Sem 3 teams + ${data.sem12} Sem 1&2 teams. Refreshing…`);
       window.location.reload();
     } else {
       alert('Error: ' + (data.error || 'Unknown'));

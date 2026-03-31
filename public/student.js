@@ -65,7 +65,7 @@ async function loadPairs() {
 
 function populateYourPair() {
   const sel = document.getElementById('yourPair');
-  sel.innerHTML = '<option value="">Your pair</option>';
+  sel.innerHTML = '<option value="">Your team</option>';
   const groups = [
     { label: 'Semester 3', pairs: pairsData.sem3 },
     { label: 'Semester 1 & 2', pairs: pairsData.sem12 },
@@ -113,25 +113,22 @@ function bindNameModal() {
   });
 
   // Allow Enter to submit
-  document.getElementById('name2').addEventListener('keydown', e => {
+  document.getElementById('nameInput').addEventListener('keydown', e => {
     if (e.key === 'Enter') saveNames();
   });
 }
 
 function showNameModal() {
-  document.getElementById('name1').value = '';
-  document.getElementById('name2').value = '';
+  document.getElementById('nameInput').value = '';
   document.getElementById('nameOverlay').classList.add('show');
-  setTimeout(() => document.getElementById('name1').focus(), 100);
+  setTimeout(() => document.getElementById('nameInput').focus(), 100);
 }
 
 async function saveNames() {
-  const n1 = document.getElementById('name1').value.trim();
-  const n2 = document.getElementById('name2').value.trim();
-  if (!n1 || !n2) return;
+  const label = document.getElementById('nameInput').value.trim();
+  if (!label) return;
 
   const pairId = document.getElementById('yourPair').value;
-  const label = `${n1} & ${n2}`;
 
   try {
     const res = await fetch('/api/pair/label', {
@@ -188,7 +185,7 @@ function bindEvents() {
 async function handleYourPairChange(pairId) {
   if (!pairId) {
     document.getElementById('metPair').disabled = true;
-    document.getElementById('metPair').innerHTML = '<option value="">Select your pair first</option>';
+    document.getElementById('metPair').innerHTML = '<option value="">Select your team first</option>';
     return;
   }
   localStorage.setItem('myPairId', pairId);
@@ -425,8 +422,8 @@ async function handleSubmit() {
   const metPair  = document.getElementById('metPair').value;
   const notes    = document.getElementById('notes').value.trim();
 
-  if (!yourPair) return showBanner('Select your pair in the top right.', 'error');
-  if (!metPair)  return showBanner('Select the pair you met.', 'error');
+  if (!yourPair) return showBanner('Select your team in the top right.', 'error');
+  if (!metPair)  return showBanner('Select who you met.', 'error');
   if (!scores.skillComp)    return showBanner('Set a Skills score.', 'error');
   if (!scores.projectAlign) return showBanner('Set an Interest score.', 'error');
   if (!scores.commFit)      return showBanner('Set a Communication score.', 'error');

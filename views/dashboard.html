@@ -51,7 +51,7 @@
             <small id="matrixUpdated" style="color:var(--text-muted);font-size:.8rem;"></small>
           </div>
           <p style="font-size:.85rem;color:var(--text-muted);margin-bottom:12px;">
-            Average score per pair combination (1–5). Click a cell for details.
+            Average score per team combination (1–5). Click a cell for details.
             <span style="margin-left:8px;">
               <span style="background:#dcfce7;padding:2px 8px;border-radius:4px;font-size:.75rem;">&#8805; 4.0</span>
               <span style="background:#fef9c3;padding:2px 8px;border-radius:4px;font-size:.75rem;margin-left:4px;">3.0–3.9</span>
@@ -99,7 +99,25 @@
           <div class="section-header"><h2>Settings</h2></div>
 
           <div class="settings-section">
-            <h3>Edit Pair Names</h3>
+            <h3>Bulk Add Names</h3>
+            <p>Paste names (one per line) to assign to teams in order. Semester 3 first, then Semester 1 &amp; 2.</p>
+            <div class="bulk-names-form">
+              <div class="bulk-names-cols">
+                <div class="bulk-names-col">
+                  <label for="bulkSem3">Semester 3</label>
+                  <textarea id="bulkSem3" rows="8" placeholder="Tom &amp; Jerry&#10;Han &amp; Leia&#10;..."></textarea>
+                </div>
+                <div class="bulk-names-col">
+                  <label for="bulkSem12">Semester 1 &amp; 2</label>
+                  <textarea id="bulkSem12" rows="8" placeholder="Yuki &amp; Kenji&#10;Ingrid &amp; Lars&#10;..."></textarea>
+                </div>
+              </div>
+              <button class="btn-submit" id="bulkNamesBtn" style="max-width:320px;margin-top:12px;">Apply Names</button>
+            </div>
+          </div>
+
+          <div class="settings-section">
+            <h3>Edit Team Names</h3>
             <p>Click a name to edit it. Changes are saved immediately.</p>
             <div class="pair-names-grid" id="pairNamesGrid"></div>
           </div>
@@ -109,11 +127,11 @@
             <p>Start a fresh session. This will clear all ratings and rankings.</p>
             <div class="new-session-form">
               <div class="session-field">
-                <label for="numSem3">Semester 3 pairs</label>
+                <label for="numSem3">Semester 3 teams</label>
                 <input type="number" id="numSem3" min="1" max="30" value="10">
               </div>
               <div class="session-field">
-                <label for="numSem12">Semester 1 & 2 pairs</label>
+                <label for="numSem12">Semester 1 &amp; 2 teams</label>
                 <input type="number" id="numSem12" min="1" max="30" value="10">
               </div>
               <button class="btn-submit btn-danger" id="newSessionBtn">Reset &amp; Start New Session</button>

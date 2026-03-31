@@ -11,7 +11,7 @@
     <header class="top-bar">
       <h1>Creating Connections</h1>
       <select id="yourPair" class="pair-pill">
-        <option value="">Your pair</option>
+        <option value="">Your team</option>
       </select>
     </header>
 
@@ -73,12 +73,10 @@
 
     <div class="name-overlay" id="nameOverlay">
       <div class="name-modal">
-        <h2>What are your names?</h2>
-        <p>Enter both first names for your pair</p>
+        <h2>What's your team name?</h2>
+        <p>Enter your name or names</p>
         <div class="name-inputs">
-          <input type="text" id="name1" placeholder="First name" maxlength="12" autocomplete="off">
-          <span class="name-amp">&amp;</span>
-          <input type="text" id="name2" placeholder="First name" maxlength="12" autocomplete="off">
+          <input type="text" id="nameInput" placeholder="e.g. Tom & Jerry" maxlength="30" autocomplete="off">
         </div>
         <button type="button" class="btn-submit" id="saveNames">Save</button>
         <button type="button" class="name-skip" id="skipNames">Skip for now</button>

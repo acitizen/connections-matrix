@@ -253,17 +253,16 @@ app.get('/api/dashboard/progress', requireAdmin, (_req, res) => {
   const ratings  = db.getAllRatings();
   const rankings = db.getAllRankings();
 
-  const ratingsByPair = {};
-  for (const p of pairs) ratingsByPair[p.id] = {};
+  const ratingCounts = {};
+  for (const p of pairs) ratingCounts[p.id] = 0;
 
   for (const r of ratings) {
-    if (!ratingsByPair[r.rater_pair][r.round]) ratingsByPair[r.rater_pair][r.round] = [];
-    ratingsByPair[r.rater_pair][r.round].push(r.rated_pair);
+    if (ratingCounts[r.rater_pair] !== undefined) ratingCounts[r.rater_pair]++;
   }
 
   res.json({
     pairs:              pairs.map(p => ({ id: p.id, cohort: p.cohort, label: p.label })),
-    ratingsByPair,
+    ratingCounts,
     rankingsSubmitted:  rankings.map(r => r.pair_id),
   });
 });

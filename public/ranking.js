@@ -16,7 +16,7 @@ async function loadPairs() {
 
 function populateYourPair() {
   const sel = document.getElementById('yourPair');
-  sel.innerHTML = '<option value="">— Select your pair —</option>';
+  sel.innerHTML = '<option value="">— Select your team —</option>';
 
   const groups = [
     { label: 'Semester 3', pairs: pairsData.sem3 },
@@ -95,7 +95,7 @@ function bindEvents() {
     } else {
       ['rank1', 'rank2', 'rank3'].forEach(id => {
         const sel = document.getElementById(id);
-        sel.innerHTML = '<option value="">— Select your pair first —</option>';
+        sel.innerHTML = '<option value="">— Select your team first —</option>';
         sel.disabled = true;
       });
     }
@@ -117,7 +117,7 @@ async function handleSubmit(e) {
   const rank2 = document.getElementById('rank2').value;
   const rank3 = document.getElementById('rank3').value;
 
-  if (!pair)  return showBanner('Please select your pair ID.', 'error');
+  if (!pair)  return showBanner('Please select your team.', 'error');
   if (!rank1) return showBanner('Please select your 1st preference.', 'error');
   if (!rank2) return showBanner('Please select your 2nd preference.', 'error');
   if (!rank3) return showBanner('Please select your 3rd preference.', 'error');
