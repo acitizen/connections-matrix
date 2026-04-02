@@ -1,16 +1,39 @@
-// Pair configuration — edit here to adjust pair IDs and counts
-const PAIRS = [];
+const fs = require('fs');
+const path = require('path');
 
-// Semester 3 pairs
-for (let i = 1; i <= 10; i++) {
-  const id = `S3-${String(i).padStart(2, '0')}`;
-  PAIRS.push({ id, cohort: 'sem3', label: id });
+const SESSION_PATH = path.join(__dirname, 'session.json');
+
+const DEFAULT_GROUPS = [
+  { key: 'group1', name: 'Group A', count: 10 },
+  { key: 'group2', name: 'Group B', count: 10 },
+];
+
+function loadSession() {
+  try {
+    return JSON.parse(fs.readFileSync(SESSION_PATH, 'utf8'));
+  } catch {
+    return { groups: DEFAULT_GROUPS };
+  }
 }
 
-// Semester 1 & 2 pairs
-for (let i = 1; i <= 10; i++) {
-  const id = `S1-${String(i).padStart(2, '0')}`;
-  PAIRS.push({ id, cohort: 'sem12', label: id });
+function saveSession(session) {
+  fs.writeFileSync(SESSION_PATH, JSON.stringify(session, null, 2));
 }
 
-module.exports = { PAIRS };
+function buildPairs(groups) {
+  const pairs = [];
+  for (const g of groups) {
+    for (let i = 1; i <= g.count; i++) {
+      const num = String(i).padStart(2, '0');
+      const id = `${g.key}-${num}`;
+      pairs.push({ id, cohort: g.key, label: id });
+    }
+  }
+  return pairs;
+}
+
+// Generate default pairs from session config
+const session = loadSession();
+const PAIRS = buildPairs(session.groups);
+
+module.exports = { PAIRS, DEFAULT_GROUPS, loadSession, saveSession, buildPairs };

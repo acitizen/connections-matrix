@@ -1,5 +1,7 @@
 /* ── Auth ────────────────────────────────────────────────────────── */
 let adminPassword = localStorage.getItem('adminPassword') || '';
+let sessionGroups = [];
+let currentCriteria = [];
 
 document.addEventListener('DOMContentLoaded', () => {
   if (adminPassword) {
@@ -24,6 +26,8 @@ async function attemptAuth(pw) {
     localStorage.setItem('adminPassword', pw);
     showDashboard();
     const data = await res.json();
+    sessionGroups = data.groups || [];
+    currentCriteria = data.criteria || [];
     renderMatrix(data);
     loadMatches();
     loadProgress();
@@ -76,10 +80,15 @@ function bindDashEvents() {
   });
 
   // Settings
-  document.getElementById('newSessionBtn').addEventListener('click', handleNewSession);
   document.getElementById('saveCriteriaBtn').addEventListener('click', handleSaveCriteria);
+  document.getElementById('addAxisBtn').addEventListener('click', handleAddAxis);
+  document.getElementById('removeAxisBtn').addEventListener('click', handleRemoveAxis);
   document.getElementById('bulkNamesBtn').addEventListener('click', handleBulkNames);
+  document.getElementById('printCodesBtn').addEventListener('click', handlePrintCodes);
+  document.getElementById('copyAllCodesBtn').addEventListener('click', handleCopyAllCodes);
+  loadTeamCodes();
   loadPairNames();
+  loadNewSessionForm();
   loadCriteria();
 }
 
@@ -96,13 +105,20 @@ async function doExport(filename) {
 }
 
 /* ── Matrix ──────────────────────────────────────────────────────── */
-function renderMatrix({ sem3Pairs, sem12Pairs, cells }) {
+let db_pairLabels = {};
+
+function renderMatrix({ groups, group1Teams, group2Teams, cells }) {
+  // Build pair label lookup for modal
+  db_pairLabels = {};
+  for (const p of group1Teams) db_pairLabels[p.id] = p.label;
+  for (const p of group2Teams) db_pairLabels[p.id] = p.label;
+
   const headerRow = document.getElementById('matrixHeader');
   const tbody     = document.getElementById('matrixBody');
 
   // Header
   headerRow.innerHTML = '<th></th>';
-  for (const p of sem12Pairs) {
+  for (const p of group2Teams) {
     const th = document.createElement('th');
     th.textContent = p.label;
     headerRow.appendChild(th);
@@ -110,15 +126,15 @@ function renderMatrix({ sem3Pairs, sem12Pairs, cells }) {
 
   // Rows
   tbody.innerHTML = '';
-  for (const s2 of sem3Pairs) {
+  for (const g1 of group1Teams) {
     const tr = document.createElement('tr');
     const rowHeader = document.createElement('th');
-    rowHeader.textContent = s2.label;
+    rowHeader.textContent = g1.label;
     tr.appendChild(rowHeader);
 
-    for (const s1 of sem12Pairs) {
+    for (const g2 of group2Teams) {
       const td   = document.createElement('td');
-      const cell = cells[s2.id]?.[s1.id];
+      const cell = cells[g1.id]?.[g2.id];
 
       if (!cell) {
         td.className = 'cell-empty';
@@ -127,8 +143,8 @@ function renderMatrix({ sem3Pairs, sem12Pairs, cells }) {
         const avg = cell.average;
         td.className = `cell-score ${avg >= 4 ? 'cell-high' : avg >= 3 ? 'cell-mid' : 'cell-low'}`;
         td.textContent = avg.toFixed(2);
-        td.title = `${s2.label} × ${s1.label} — click for details`;
-        td.addEventListener('click', () => showCellModal(s2.label, s1.label, cell));
+        td.title = `${g1.label} × ${g2.label} — click for details`;
+        td.addEventListener('click', () => showCellModal(g1.label, g2.label, cell));
       }
 
       tr.appendChild(td);
@@ -142,8 +158,8 @@ function renderMatrix({ sem3Pairs, sem12Pairs, cells }) {
 }
 
 /* ── Cell modal ──────────────────────────────────────────────────── */
-function showCellModal(s2Label, s1Label, cell) {
-  document.getElementById('modalTitle').textContent = `${s2Label} × ${s1Label}`;
+function showCellModal(label1, label2, cell) {
+  document.getElementById('modalTitle').textContent = `${label1} × ${label2}`;
 
   const avg  = cell.average;
   const avgEl = document.getElementById('modalAvg');
@@ -153,17 +169,31 @@ function showCellModal(s2Label, s1Label, cell) {
   const container = document.getElementById('modalDetails');
   container.innerHTML = '';
 
+  // Build a lookup of pair labels
+  const allPairs = db_pairLabels || {};
+
   for (const d of cell.details) {
     const div = document.createElement('div');
     div.className = 'rating-detail';
-    const rowAvg = ((d.skillComp + d.projectAlign + d.commFit) / 3).toFixed(2);
+
+    const scores = d.scores || {};
+    const vals = Object.values(scores);
+    const rowAvg = vals.length ? (vals.reduce((a, b) => a + b, 0) / vals.length).toFixed(2) : '—';
+
+    const raterLabel = allPairs[d.rater] || d.rater;
+    const ratedLabel = allPairs[d.rated] || d.rated;
+
+    let scoresHtml = '';
+    for (let i = 0; i < currentCriteria.length; i++) {
+      const axisKey = `axis${i}`;
+      const val = scores[axisKey];
+      const name = currentCriteria[i]?.name || `Axis ${i + 1}`;
+      scoresHtml += `<div class="score-item"><span>${escHtml(name)}: </span><span>${val != null ? val + '/5' : '—'}</span></div>`;
+    }
+
     div.innerHTML = `
-      <div class="detail-header">${d.rater} rated ${d.rated} &mdash; avg ${rowAvg}</div>
-      <div class="scores">
-        <div class="score-item"><span>Skill: </span><span>${d.skillComp}/5</span></div>
-        <div class="score-item"><span>Project: </span><span>${d.projectAlign}/5</span></div>
-        <div class="score-item"><span>Comms: </span><span>${d.commFit}/5</span></div>
-      </div>
+      <div class="detail-header">${escHtml(raterLabel)} rated ${escHtml(ratedLabel)} &mdash; avg ${rowAvg}</div>
+      <div class="scores">${scoresHtml}</div>
       ${d.notes ? `<div class="notes">"${escHtml(d.notes)}"</div>` : ''}
     `;
     container.appendChild(div);
@@ -193,13 +223,13 @@ function renderMutual(mutual) {
   }
   el.innerHTML = '';
   for (const m of mutual) {
-    const isBoth1 = m.sem3Rank === 1 && m.sem12Rank === 1;
+    const isBoth1 = m.rank1 === 1 && m.rank2 === 1;
     const div = document.createElement('div');
     div.className = `match-item ${isBoth1 ? 'mutual-1' : 'mutual'}`;
     div.innerHTML = `
       <div>
-        <div class="match-pairs">${m.sem3} &harr; ${m.sem12}</div>
-        <div class="match-ranks">${m.sem3} ranked #${m.sem3Rank} &bull; ${m.sem12} ranked #${m.sem12Rank}</div>
+        <div class="match-pairs">${m.team1} &harr; ${m.team2}</div>
+        <div class="match-ranks">${m.team1} ranked #${m.rank1} &bull; ${m.team2} ranked #${m.rank2}</div>
       </div>
       <span class="match-badge ${isBoth1 ? 'badge-mutual-1' : 'badge-mutual'}">
         ${isBoth1 ? 'Mutual #1' : 'Mutual'}
@@ -221,8 +251,8 @@ function renderOneSided(oneSided) {
     div.className = 'match-item one-sided';
     div.innerHTML = `
       <div>
-        <div class="match-pairs">${m.sem3} &rarr; ${m.sem12}</div>
-        <div class="match-ranks">${m.sem3} ranked #${m.sem3Rank} &bull; ${m.sem12HasRanked ? `${m.sem12} hasn't ranked them` : `${m.sem12} hasn't submitted`}</div>
+        <div class="match-pairs">${m.team1} &rarr; ${m.team2}</div>
+        <div class="match-ranks">${m.team1} ranked #${m.rank1} &bull; ${m.team2HasRanked ? `${m.team2} hasn't ranked them` : `${m.team2} hasn't submitted`}</div>
       </div>
       <span class="match-badge badge-one-side">One-sided</span>
     `;
@@ -234,20 +264,20 @@ function renderOneSided(oneSided) {
 async function loadProgress() {
   const res  = await authFetch('/api/dashboard/progress');
   const data = await res.json();
+  sessionGroups = data.groups || sessionGroups;
   renderProgress(data);
 }
 
-function renderProgress({ pairs, ratingCounts, rankingsSubmitted }) {
+function renderProgress({ groups, pairs, ratingCounts, rankingsSubmitted }) {
   const container = document.getElementById('progressSection');
   container.innerHTML = '';
 
-  const sem3  = pairs.filter(p => p.cohort === 'sem3');
-  const sem12 = pairs.filter(p => p.cohort === 'sem12');
+  for (const g of groups) {
+    const groupTeams = pairs.filter(p => p.cohort === g.key);
 
-  for (const [groupLabel, group] of [['Semester 3', sem3], ['Semester 1 & 2', sem12]]) {
     const h3 = document.createElement('h3');
     h3.className = 'progress-section';
-    h3.textContent = `${groupLabel} — Submissions`;
+    h3.textContent = `${g.name} — Submissions`;
     container.appendChild(h3);
 
     const wrap  = document.createElement('div');
@@ -266,7 +296,7 @@ function renderProgress({ pairs, ratingCounts, rankingsSubmitted }) {
     hrow.appendChild(rankTh);
 
     const tbody = table.createTBody();
-    for (const p of group) {
+    for (const p of groupTeams) {
       const tr = tbody.insertRow();
       tr.insertCell().textContent = p.label;
 
@@ -288,30 +318,142 @@ function renderProgress({ pairs, ratingCounts, rankingsSubmitted }) {
   }
 }
 
-/* ── Settings: Bulk Names ───────────────────────────────────────── */
-async function handleBulkNames() {
-  const sem3Names  = document.getElementById('bulkSem3').value.trim().split('\n').filter(n => n.trim());
-  const sem12Names = document.getElementById('bulkSem12').value.trim().split('\n').filter(n => n.trim());
-
-  if (!sem3Names.length && !sem12Names.length) {
-    alert('Enter at least one name.');
-    return;
-  }
-
-  // Get current teams
+/* ── Settings: Team Codes ──────────────────────────────────────── */
+async function loadTeamCodes() {
   const res  = await authFetch('/api/dashboard/progress');
   const data = await res.json();
-  const sem3  = data.pairs.filter(p => p.cohort === 'sem3');
-  const sem12 = data.pairs.filter(p => p.cohort === 'sem12');
+  const grid = document.getElementById('teamCodesGrid');
+  grid.innerHTML = '';
+
+  // Also populate bulk names columns
+  const bulkCols = document.getElementById('bulkNamesCols');
+  bulkCols.innerHTML = '';
+
+  for (const g of data.groups) {
+    const groupTeams = data.pairs.filter(p => p.cohort === g.key);
+
+    // Team codes section
+    const h4 = document.createElement('h4');
+    h4.textContent = g.name;
+    h4.className = 'pair-group-label';
+    grid.appendChild(h4);
+
+    for (const p of groupTeams) {
+      const row = document.createElement('div');
+      row.className = 'team-code-row';
+
+      const labelSpan = document.createElement('span');
+      labelSpan.className = 'team-code-label';
+      labelSpan.textContent = p.label;
+
+      const codeSpan = document.createElement('span');
+      codeSpan.className = 'team-code-value';
+      codeSpan.textContent = p.code;
+      codeSpan.title = 'Click to copy';
+      codeSpan.addEventListener('click', () => {
+        navigator.clipboard.writeText(p.code);
+        codeSpan.textContent = 'Copied!';
+        setTimeout(() => { codeSpan.textContent = p.code; }, 1500);
+      });
+
+      row.appendChild(labelSpan);
+      row.appendChild(codeSpan);
+      grid.appendChild(row);
+    }
+
+    // Bulk names column
+    const col = document.createElement('div');
+    col.className = 'bulk-names-col';
+    col.innerHTML = `
+      <label>${escHtml(g.name)}</label>
+      <textarea data-group="${g.key}" rows="8" placeholder="Name 1&#10;Name 2&#10;..."></textarea>
+    `;
+    bulkCols.appendChild(col);
+  }
+}
+
+/* ── Settings: Print / Copy Codes ─────────────────────────────── */
+async function handlePrintCodes() {
+  const res  = await authFetch('/api/dashboard/progress');
+  const data = await res.json();
+
+  let html = `<!DOCTYPE html><html><head><meta charset="UTF-8">
+<title>Team Codes</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; padding: 20px; }
+  h1 { font-size: 18px; margin-bottom: 16px; text-align: center; }
+  h2 { font-size: 14px; margin: 16px 0 8px; color: #666; text-transform: uppercase; letter-spacing: 0.05em; }
+  .codes-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px; }
+  .code-card {
+    border: 2px dashed #ccc; border-radius: 8px; padding: 12px 16px;
+    display: flex; justify-content: space-between; align-items: center;
+    page-break-inside: avoid;
+  }
+  .code-card .label { font-size: 13px; color: #333; }
+  .code-card .code { font-family: 'SF Mono', 'Consolas', monospace; font-size: 22px; font-weight: 700; letter-spacing: 3px; color: #000; }
+  @media print {
+    body { padding: 10px; }
+    .code-card { border: 2px dashed #999; }
+  }
+</style>
+</head><body>
+<h1>Creating Connections — Team Codes</h1>`;
+
+  for (const g of data.groups) {
+    const groupTeams = data.pairs.filter(p => p.cohort === g.key);
+    html += `<h2>${escHtml(g.name)}</h2><div class="codes-grid">`;
+    for (const p of groupTeams) {
+      html += `<div class="code-card"><span class="label">${escHtml(p.label)}</span><span class="code">${escHtml(p.code)}</span></div>`;
+    }
+    html += `</div>`;
+  }
+
+  html += `</body></html>`;
+
+  const win = window.open('', '_blank');
+  win.document.write(html);
+  win.document.close();
+  setTimeout(() => win.print(), 400);
+}
+
+async function handleCopyAllCodes() {
+  const res  = await authFetch('/api/dashboard/progress');
+  const data = await res.json();
+
+  let text = '';
+  for (const g of data.groups) {
+    const groupTeams = data.pairs.filter(p => p.cohort === g.key);
+    text += `${g.name}\n${'─'.repeat(30)}\n`;
+    for (const p of groupTeams) {
+      text += `${p.label.padEnd(20)} ${p.code}\n`;
+    }
+    text += '\n';
+  }
+
+  await navigator.clipboard.writeText(text.trim());
+  const btn = document.getElementById('copyAllCodesBtn');
+  btn.textContent = 'Copied!';
+  setTimeout(() => { btn.textContent = 'Copy All Codes'; }, 2000);
+}
+
+/* ── Settings: Bulk Names ──────────────────────────────────────── */
+async function handleBulkNames() {
+  const textareas = document.querySelectorAll('#bulkNamesCols textarea');
+  const res  = await authFetch('/api/dashboard/progress');
+  const data = await res.json();
 
   let updated = 0;
   const updates = [];
 
-  for (let i = 0; i < sem3Names.length && i < sem3.length; i++) {
-    updates.push({ pairId: sem3[i].id, label: sem3Names[i].trim().slice(0, 30) });
-  }
-  for (let i = 0; i < sem12Names.length && i < sem12.length; i++) {
-    updates.push({ pairId: sem12[i].id, label: sem12Names[i].trim().slice(0, 30) });
+  for (const ta of textareas) {
+    const groupKey = ta.dataset.group;
+    const names = ta.value.trim().split('\n').filter(n => n.trim());
+    const groupTeams = data.pairs.filter(p => p.cohort === groupKey);
+
+    for (let i = 0; i < names.length && i < groupTeams.length; i++) {
+      updates.push({ pairId: groupTeams[i].id, label: names[i].trim().slice(0, 30) });
+    }
   }
 
   for (const u of updates) {
@@ -328,6 +470,7 @@ async function handleBulkNames() {
 
   alert(`${updated} team name${updated !== 1 ? 's' : ''} updated.`);
   loadPairNames();
+  loadTeamCodes();
 }
 
 /* ── Settings: Team Names ───────────────────────────────────────── */
@@ -337,22 +480,21 @@ async function loadPairNames() {
   const grid = document.getElementById('pairNamesGrid');
   grid.innerHTML = '';
 
-  const sem3  = data.pairs.filter(p => p.cohort === 'sem3');
-  const sem12 = data.pairs.filter(p => p.cohort === 'sem12');
+  for (const g of data.groups) {
+    const groupTeams = data.pairs.filter(p => p.cohort === g.key);
 
-  for (const [groupLabel, group] of [['Semester 3', sem3], ['Semester 1 & 2', sem12]]) {
     const h4 = document.createElement('h4');
-    h4.textContent = groupLabel;
+    h4.textContent = g.name;
     h4.className = 'pair-group-label';
     grid.appendChild(h4);
 
-    for (const p of group) {
+    for (const p of groupTeams) {
       const row = document.createElement('div');
       row.className = 'pair-name-row';
 
       const idSpan = document.createElement('span');
       idSpan.className = 'pair-name-id';
-      idSpan.textContent = p.id;
+      idSpan.textContent = p.code;
 
       const input = document.createElement('input');
       input.type = 'text';
@@ -393,12 +535,50 @@ async function loadPairNames() {
   }
 }
 
-/* ── Settings: New Session ───────────────────────────────────────── */
-async function handleNewSession() {
-  const numSem3  = parseInt(document.getElementById('numSem3').value, 10);
-  const numSem12 = parseInt(document.getElementById('numSem12').value, 10);
+/* ── Settings: New Session ──────────────────────────────────────── */
+function loadNewSessionForm() {
+  const form = document.getElementById('newSessionForm');
+  const groups = sessionGroups.length ? sessionGroups : [
+    { key: 'group1', name: 'Group A', count: 10 },
+    { key: 'group2', name: 'Group B', count: 10 },
+  ];
 
-  if (!confirm(`This will delete ALL ratings and rankings and create ${numSem3} Sem 3 + ${numSem12} Sem 1&2 teams. Continue?`)) {
+  form.innerHTML = '';
+  for (let i = 0; i < 2; i++) {
+    const g = groups[i] || { name: `Group ${String.fromCharCode(65 + i)}`, count: 10 };
+    const div = document.createElement('div');
+    div.className = 'session-field';
+    div.innerHTML = `
+      <label>Group ${i + 1} name</label>
+      <input type="text" class="session-group-name" data-idx="${i}" value="${escHtml(g.name)}" maxlength="30">
+      <label style="margin-top:6px;">Number of teams</label>
+      <input type="number" class="session-group-count" data-idx="${i}" min="1" max="30" value="${g.count}">
+    `;
+    form.appendChild(div);
+  }
+
+  const btn = document.createElement('button');
+  btn.className = 'btn-submit btn-danger';
+  btn.id = 'newSessionBtn';
+  btn.textContent = 'Reset & Start New Session';
+  btn.addEventListener('click', handleNewSession);
+  form.appendChild(btn);
+}
+
+async function handleNewSession() {
+  const names  = document.querySelectorAll('.session-group-name');
+  const counts = document.querySelectorAll('.session-group-count');
+
+  const groups = [];
+  for (let i = 0; i < 2; i++) {
+    groups.push({
+      name:  names[i]?.value.trim() || `Group ${String.fromCharCode(65 + i)}`,
+      count: parseInt(counts[i]?.value, 10) || 10,
+    });
+  }
+
+  const total = groups.reduce((s, g) => s + g.count, 0);
+  if (!confirm(`This will delete ALL ratings and rankings and create ${total} teams (${groups[0].name}: ${groups[0].count}, ${groups[1].name}: ${groups[1].count}). Continue?`)) {
     return;
   }
 
@@ -406,11 +586,11 @@ async function handleNewSession() {
     const res = await fetch('/api/dashboard/new-session', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${adminPassword}` },
-      body: JSON.stringify({ numSem3, numSem12 }),
+      body: JSON.stringify({ groups }),
     });
     const data = await res.json();
     if (data.success) {
-      alert(`New session created: ${data.sem3} Sem 3 teams + ${data.sem12} Sem 1&2 teams. Refreshing…`);
+      alert('New session created. Refreshing…');
       window.location.reload();
     } else {
       alert('Error: ' + (data.error || 'Unknown'));
@@ -421,20 +601,28 @@ async function handleNewSession() {
 }
 
 /* ── Settings: Criteria ──────────────────────────────────────────── */
+const AXIS_COLORS = [
+  'var(--accent-teal)', 'var(--accent-purple)', 'var(--accent-sky)',
+  '#e87461', '#f5a623', '#7ec8e3', '#b8d86b', '#c49bde',
+];
+
 async function loadCriteria() {
   const res  = await fetch('/api/criteria');
   const criteria = await res.json();
+  currentCriteria = criteria;
+  renderCriteriaEditor(criteria);
+}
+
+function renderCriteriaEditor(criteria) {
   const editor = document.getElementById('criteriaEditor');
   editor.innerHTML = '';
-
-  const colors = ['var(--accent-teal)', 'var(--accent-purple)', 'var(--accent-sky)'];
 
   criteria.forEach((c, i) => {
     const div = document.createElement('div');
     div.className = 'criteria-row';
     div.innerHTML = `
       <div class="criteria-field">
-        <label style="color:${colors[i]}">Axis ${i + 1}: Name</label>
+        <label style="color:${AXIS_COLORS[i % AXIS_COLORS.length]}">Axis ${i + 1}: Name</label>
         <input type="text" class="criteria-input" data-idx="${i}" data-prop="name" value="${escHtml(c.name)}" maxlength="30">
       </div>
       <div class="criteria-field">
@@ -448,16 +636,51 @@ async function loadCriteria() {
     `;
     editor.appendChild(div);
   });
+
+  // Update button states
+  updateAxisButtons(criteria.length);
 }
 
-async function handleSaveCriteria() {
+function updateAxisButtons(count) {
+  const addBtn = document.getElementById('addAxisBtn');
+  const removeBtn = document.getElementById('removeAxisBtn');
+  if (addBtn) addBtn.disabled = count >= 8;
+  if (removeBtn) removeBtn.disabled = count <= 2;
+}
+
+function handleAddAxis() {
+  const criteria = collectCriteriaFromEditor();
+  if (criteria.length >= 8) return;
+  criteria.push({ name: '', lowLabel: '', highLabel: '' });
+  renderCriteriaEditor(criteria);
+}
+
+function handleRemoveAxis() {
+  const criteria = collectCriteriaFromEditor();
+  if (criteria.length <= 2) return;
+  criteria.pop();
+  renderCriteriaEditor(criteria);
+}
+
+function collectCriteriaFromEditor() {
   const inputs = document.querySelectorAll('.criteria-input');
-  const criteria = [{}, {}, {}];
+  const criteria = [];
   inputs.forEach(inp => {
     const idx  = parseInt(inp.dataset.idx, 10);
     const prop = inp.dataset.prop;
+    if (!criteria[idx]) criteria[idx] = {};
     criteria[idx][prop] = inp.value.trim();
   });
+  return criteria;
+}
+
+async function handleSaveCriteria() {
+  const criteria = collectCriteriaFromEditor();
+
+  if (criteria.length < 2 || criteria.length > 8) {
+    alert('You need between 2 and 8 axes.');
+    return;
+  }
 
   try {
     const res = await fetch('/api/dashboard/criteria', {
@@ -467,6 +690,7 @@ async function handleSaveCriteria() {
     });
     const data = await res.json();
     if (data.success) {
+      currentCriteria = data.criteria || criteria;
       alert('Criteria saved. Students will see updated labels on next page load.');
     } else {
       alert('Error: ' + (data.error || 'Unknown'));

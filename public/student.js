@@ -1,118 +1,174 @@
 /* ── State ───────────────────────────────────────────────────────── */
-let pairsData = { sem3: [], sem12: [] };
-const scores = { skillComp: null, projectAlign: null, commFit: null };
-let myRatings = {};  // { ratedPairId: { skillComp, projectAlign, commFit, notes } }
-let isEditing = false; // true when viewing a previously submitted rating
+let myTeam = null;
+let oppositeTeams = [];
+let criteria = [];          // array of { name, lowLabel, highLabel }
+let scores = {};            // { axis0: null, axis1: null, ... }
+let myRatings = {};         // { ratedPairId: { scores: {...}, notes } }
+let isEditing = false;
 
-const FIELDS = ['skillComp', 'projectAlign', 'commFit'];
-let LABELS = ['Skills', 'Interest', 'Comms'];
-const COLORS = ['115,204,204', '217,166,230', '170,130,255'];
+// Expanded palette for up to 8 axes
+const PALETTE = [
+  '115,204,204',  // teal
+  '217,166,230',  // pink
+  '170,130,255',  // purple
+  '255,183,110',  // orange
+  '130,220,130',  // green
+  '255,130,150',  // coral
+  '130,190,255',  // blue
+  '230,210,120',  // gold
+];
+const COLOR_NAMES = ['teal','pink','purple','orange','green','coral','blue','gold'];
+
+const CX = 200, CY = 195, MAX_R = 145;
+let svg;
+let dragging = null;
 
 function shortLabel(name) {
   if (name.length <= 8) return name;
-  // Common abbreviations
   const abbrevs = { 'Communication': 'Comms', 'Complementarity': 'Compl.' };
   return abbrevs[name] || name.slice(0, 7) + '.';
 }
 
-/* SVG geometry */
-const CX = 200, CY = 195, MAX_R = 145;
-const ANGLES = [-Math.PI / 2, 5 * Math.PI / 6, Math.PI / 6];
+function angles() {
+  return criteria.map((_, i) => -Math.PI / 2 + (2 * Math.PI * i) / criteria.length);
+}
 
-let svg;
-let dragging = null;
-
-/* ── Init ────────────────────────────────────────────────────────── */
 document.addEventListener('DOMContentLoaded', async () => {
   svg = document.getElementById('radarSvg');
-  await Promise.all([loadPairs(), loadCriteria()]);
-  restoreYourPair();
-  bindEvents();
-  bindChartEvents();
+  await loadCriteria();
+
+  const savedCode = localStorage.getItem('teamCode');
+  if (savedCode) {
+    const ok = await authenticateCode(savedCode);
+    if (!ok) localStorage.removeItem('teamCode');
+  }
+
+  bindCodeEntry();
   bindNameModal();
+  bindChartEvents();
   renderChart();
 });
 
+/* ── Load criteria and build score UI ───────────────────────────── */
 async function loadCriteria() {
   try {
     const res = await fetch('/api/criteria');
-    const criteria = await res.json();
-    if (!Array.isArray(criteria) || criteria.length !== 3) return;
+    const data = await res.json();
+    if (Array.isArray(data) && data.length >= 2) criteria = data;
+    else criteria = data;
+  } catch {}
 
-    // Update button labels
-    const rows = document.querySelectorAll('.score-row');
-    criteria.forEach((c, i) => {
-      if (!rows[i]) return;
-      const nameEl = rows[i].querySelector('.score-name');
-      const endsEl = rows[i].querySelector('.score-ends');
-      if (nameEl) nameEl.textContent = c.name;
-      if (endsEl) {
-        const spans = endsEl.querySelectorAll('span');
-        if (spans[0]) spans[0].textContent = c.lowLabel;
-        if (spans[1]) spans[1].textContent = c.highLabel;
-      }
-      LABELS[i] = shortLabel(c.name);
-    });
-  } catch { /* use defaults */ }
-}
-
-/* ── Data loading ────────────────────────────────────────────────── */
-async function loadPairs() {
-  const res = await fetch('/api/pairs');
-  pairsData = await res.json();
-  populateYourPair();
-}
-
-function populateYourPair() {
-  const sel = document.getElementById('yourPair');
-  sel.innerHTML = '<option value="">Your team</option>';
-  const groups = [
-    { label: 'Semester 3', pairs: pairsData.sem3 },
-    { label: 'Semester 1 & 2', pairs: pairsData.sem12 },
-  ];
-  for (const g of groups) {
-    const og = document.createElement('optgroup');
-    og.label = g.label;
-    for (const p of g.pairs) {
-      const opt = document.createElement('option');
-      opt.value = p.id;
-      opt.textContent = p.label;
-      og.appendChild(opt);
-    }
-    sel.appendChild(og);
+  if (!criteria.length) {
+    criteria = [
+      { name: 'Skills',        lowLabel: 'Overlapping', highLabel: 'Complementary' },
+      { name: 'Interest',      lowLabel: 'Different',   highLabel: 'Similar' },
+      { name: 'Communication', lowLabel: 'Warming up',  highLabel: 'Natural flow' },
+    ];
   }
+
+  // Init scores
+  scores = {};
+  criteria.forEach((_, i) => { scores[`axis${i}`] = null; });
+
+  // Build score button rows
+  buildScoreRows();
 }
 
-function populateMetPair(yourCohort) {
+function buildScoreRows() {
+  const container = document.getElementById('scoreControls');
+  container.innerHTML = '';
+
+  criteria.forEach((c, i) => {
+    const colorName = COLOR_NAMES[i % COLOR_NAMES.length];
+    const row = document.createElement('div');
+    row.className = 'score-row';
+    row.dataset.axis = `axis${i}`;
+    row.dataset.color = colorName;
+    row.style.setProperty('--sc', PALETTE[i % PALETTE.length]);
+
+    row.innerHTML = `
+      <span class="score-name">${esc(c.name)}</span>
+      <div class="score-btns">
+        ${[1,2,3,4,5].map(v => `<button type="button" class="score-btn" data-value="${v}">${v}</button>`).join('')}
+      </div>
+      <div class="score-ends"><span>${esc(c.lowLabel)}</span><span>${esc(c.highLabel)}</span></div>
+    `;
+
+    row.querySelectorAll('.score-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        setScore(`axis${i}`, parseInt(btn.dataset.value, 10));
+      });
+    });
+
+    container.appendChild(row);
+  });
+}
+
+/* ── Code entry ─────────────────────────────────────────────────── */
+function bindCodeEntry() {
+  document.getElementById('codeSubmit').addEventListener('click', handleCodeSubmit);
+  document.getElementById('codeInput').addEventListener('keydown', e => {
+    if (e.key === 'Enter') handleCodeSubmit();
+  });
+  document.getElementById('submitBtn').addEventListener('click', handleSubmit);
+}
+
+async function handleCodeSubmit() {
+  const code = document.getElementById('codeInput').value.trim().toUpperCase();
+  if (!code) return;
+  const ok = await authenticateCode(code);
+  if (ok) localStorage.setItem('teamCode', code);
+  else document.getElementById('codeError').style.display = 'block';
+}
+
+async function authenticateCode(code) {
+  try {
+    const res = await fetch('/api/auth', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code }),
+    });
+    if (!res.ok) return false;
+
+    const data = await res.json();
+    myTeam = data.team;
+    oppositeTeams = data.oppositeTeams;
+
+    document.getElementById('codeGate').style.display = 'none';
+    document.getElementById('studentMain').style.display = 'block';
+
+    const badge = document.getElementById('teamBadge');
+    badge.textContent = myTeam.label === myTeam.id ? myTeam.code : myTeam.label;
+    badge.style.display = 'block';
+
+    populateMetDropdown();
+    await loadMyRatings(myTeam.id);
+    markRatedPairs();
+
+    if (myTeam.label === myTeam.id) showNameModal();
+    return true;
+  } catch { return false; }
+}
+
+function populateMetDropdown() {
   const sel = document.getElementById('metPair');
   sel.innerHTML = '<option value="">Who did you meet?</option>';
-  const opposite = yourCohort === 'sem3' ? pairsData.sem12 : pairsData.sem3;
-  for (const p of opposite) {
+  for (const t of oppositeTeams) {
     const opt = document.createElement('option');
-    opt.value = p.id;
-    opt.textContent = p.label;
+    opt.value = t.id;
+    opt.textContent = t.label === t.id ? t.id : t.label;
     sel.appendChild(opt);
   }
   sel.disabled = false;
+  sel.addEventListener('change', e => handleMetPairChange(e.target.value));
 }
 
-function restoreYourPair() {
-  const saved = localStorage.getItem('myPairId');
-  if (saved) {
-    const sel = document.getElementById('yourPair');
-    sel.value = saved;
-    if (sel.value === saved) handleYourPairChange(saved);
-  }
-}
-
-/* ── Name modal ──────────────────────────────────────────────────── */
+/* ── Name modal ─────────────────────────────────────────────────── */
 function bindNameModal() {
   document.getElementById('saveNames').addEventListener('click', saveNames);
   document.getElementById('skipNames').addEventListener('click', () => {
     document.getElementById('nameOverlay').classList.remove('show');
   });
-
-  // Allow Enter to submit
   document.getElementById('nameInput').addEventListener('keydown', e => {
     if (e.key === 'Enter') saveNames();
   });
@@ -127,193 +183,104 @@ function showNameModal() {
 async function saveNames() {
   const label = document.getElementById('nameInput').value.trim();
   if (!label) return;
-
-  const pairId = document.getElementById('yourPair').value;
-
   try {
     const res = await fetch('/api/pair/label', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ pairId, label }),
+      body: JSON.stringify({ pairId: myTeam.id, label }),
     });
     const data = await res.json();
     if (data.success) {
-      // Update local data
-      const allLists = [pairsData.sem3, pairsData.sem12];
-      for (const list of allLists) {
-        const found = list.find(p => p.id === pairId);
-        if (found) found.label = data.label;
-      }
-      // Refresh dropdowns
-      populateYourPair();
-      document.getElementById('yourPair').value = pairId;
-      const cohort = pairsData.sem3.find(p => p.id === pairId) ? 'sem3' : 'sem12';
-      populateMetPair(cohort);
-
-      localStorage.setItem('pairNamed_' + pairId, '1');
+      myTeam.label = data.label;
+      document.getElementById('teamBadge').textContent = data.label;
       document.getElementById('nameOverlay').classList.remove('show');
-      showBanner('Names saved!', 'success');
     }
-  } catch {
-    showBanner('Could not save names.', 'error');
-  }
+  } catch { showBanner('Error saving name.', 'error'); }
 }
 
-/* ── Event binding ───────────────────────────────────────────────── */
-function bindEvents() {
-  document.getElementById('yourPair').addEventListener('change', e => {
-    handleYourPairChange(e.target.value);
-  });
-
-  document.getElementById('metPair').addEventListener('change', e => {
-    handleMetPairChange(e.target.value);
-  });
-
-  document.querySelectorAll('.score-row').forEach(row => {
-    row.querySelectorAll('.score-btn').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const field = row.dataset.field;
-        const value = parseInt(btn.dataset.value, 10);
-        setScore(field, value);
-      });
-    });
-  });
-
-  document.getElementById('submitBtn').addEventListener('click', handleSubmit);
-}
-
-async function handleYourPairChange(pairId) {
-  if (!pairId) {
-    document.getElementById('metPair').disabled = true;
-    document.getElementById('metPair').innerHTML = '<option value="">Select your team first</option>';
-    return;
-  }
-  localStorage.setItem('myPairId', pairId);
-  const cohort = pairsData.sem3.find(p => p.id === pairId) ? 'sem3' : 'sem12';
-  populateMetPair(cohort);
-
-  // Load existing ratings for this pair
-  await loadMyRatings(pairId);
-
-  // Mark already-rated pairs in the dropdown
-  markRatedPairs();
-
-  // Check if pair needs names
-  const allPairs = [...pairsData.sem3, ...pairsData.sem12];
-  const pair = allPairs.find(p => p.id === pairId);
-  const alreadyNamed = localStorage.getItem('pairNamed_' + pairId);
-  if (pair && pair.label === pair.id && !alreadyNamed) {
-    showNameModal();
-  }
-}
-
+/* ── Ratings ────────────────────────────────────────────────────── */
 async function loadMyRatings(pairId) {
   try {
     const res = await fetch(`/api/ratings/${pairId}`);
     myRatings = await res.json();
-  } catch {
-    myRatings = {};
-  }
+  } catch { myRatings = {}; }
 }
 
 function markRatedPairs() {
   const sel = document.getElementById('metPair');
   for (const opt of sel.options) {
-    if (!opt.value) continue;
-    if (myRatings[opt.value]) {
-      opt.textContent = opt.textContent.replace(/ ✓$/, '') + ' ✓';
+    if (opt.value && myRatings[opt.value]) {
+      if (!opt.textContent.endsWith(' ✓')) opt.textContent += ' ✓';
     }
   }
 }
 
 function handleMetPairChange(metPairId) {
-  const btn = document.getElementById('submitBtn');
+  resetScores();
   const existing = metPairId ? myRatings[metPairId] : null;
 
-  if (existing) {
-    // Load saved scores into the form
-    setScore('skillComp', existing.skillComp);
-    setScore('projectAlign', existing.projectAlign);
-    setScore('commFit', existing.commFit);
-    document.getElementById('notes').value = existing.notes || '';
+  if (existing && existing.scores) {
     isEditing = true;
-    btn.textContent = 'Update';
-    showBanner('Previously submitted \u2014 edit and update if needed.', 'success');
+    for (const [key, val] of Object.entries(existing.scores)) {
+      setScore(key, val);
+    }
+    document.getElementById('notes').value = existing.notes || '';
+    document.getElementById('submitBtn').textContent = 'Update';
+    showBanner('Previously submitted — edit and update if needed.', 'info');
   } else {
-    // Clear for fresh entry
-    resetScores();
     isEditing = false;
-    btn.textContent = 'Submit';
+    document.getElementById('notes').value = '';
+    document.getElementById('submitBtn').textContent = 'Submit';
+    hideBanner();
   }
 }
 
 function resetScores() {
-  scores.skillComp = null;
-  scores.projectAlign = null;
-  scores.commFit = null;
+  criteria.forEach((_, i) => { scores[`axis${i}`] = null; });
   document.querySelectorAll('.score-btn').forEach(b => b.classList.remove('active'));
-  document.getElementById('notes').value = '';
   renderChart();
 }
 
-function setScore(field, value) {
-  scores[field] = value;
-  const row = document.querySelector(`.score-row[data-field="${field}"]`);
+function setScore(axis, value) {
+  scores[axis] = value;
+  const row = document.querySelector(`.score-row[data-axis="${axis}"]`);
   if (row) {
-    row.querySelectorAll('.score-btn').forEach(btn => {
-      btn.classList.toggle('active', parseInt(btn.dataset.value, 10) === value);
+    row.querySelectorAll('.score-btn').forEach(b => {
+      b.classList.toggle('active', parseInt(b.dataset.value, 10) === value);
     });
   }
   renderChart();
 }
 
-function setScoreByAxis(axisIndex, level) {
-  setScore(FIELDS[axisIndex], level);
-}
-
-/* ── Interactive triangle chart ──────────────────────────────────── */
+/* ── Chart interaction ──────────────────────────────────────────── */
 function svgCoords(e) {
   const rect = svg.getBoundingClientRect();
-  return {
-    x: (e.clientX - rect.left) / rect.width * 400,
-    y: (e.clientY - rect.top) / rect.height * 420,
-  };
+  return { x: (e.clientX - rect.left) / rect.width * 400, y: (e.clientY - rect.top) / rect.height * 420 };
 }
 
 function bindChartEvents() {
   svg.addEventListener('pointerdown', e => {
     const pt = svgCoords(e);
-
-    // Check if near an existing vertex dot
-    for (let i = 0; i < 3; i++) {
-      const v = scores[FIELDS[i]] || 0;
-      if (v === 0) continue;
+    const a = angles();
+    for (let i = 0; i < criteria.length; i++) {
+      const v = scores[`axis${i}`] || 0;
       const r = (v / 5) * MAX_R;
-      const vx = CX + r * Math.cos(ANGLES[i]);
-      const vy = CY + r * Math.sin(ANGLES[i]);
+      const vx = CX + r * Math.cos(a[i]);
+      const vy = CY + r * Math.sin(a[i]);
       if (Math.hypot(pt.x - vx, pt.y - vy) < 30) {
         dragging = i;
         svg.setPointerCapture(e.pointerId);
-        e.preventDefault();
         return;
       }
     }
-
-    // Check if tapping along an axis line
-    for (let i = 0; i < 3; i++) {
-      const ax = Math.cos(ANGLES[i]);
-      const ay = Math.sin(ANGLES[i]);
-      const dx = pt.x - CX;
-      const dy = pt.y - CY;
-      const proj = dx * ax + dy * ay;
-      const perpDist = Math.abs(dx * ay - dy * ax);
-
-      if (proj > 0 && proj <= MAX_R + 15 && perpDist < 35) {
-        const level = Math.round(Math.max(1, Math.min(5, proj / (MAX_R / 5))));
-        setScoreByAxis(i, level);
+    for (let i = 0; i < criteria.length; i++) {
+      const dx = pt.x - CX, dy = pt.y - CY;
+      const proj = dx * Math.cos(a[i]) + dy * Math.sin(a[i]);
+      const perp = Math.abs(-dx * Math.sin(a[i]) + dy * Math.cos(a[i]));
+      if (proj > 0 && proj <= MAX_R + 15 && perp < 35) {
+        setScore(`axis${i}`, Math.round(Math.max(1, Math.min(5, proj / (MAX_R / 5)))));
         dragging = i;
         svg.setPointerCapture(e.pointerId);
-        e.preventDefault();
         return;
       }
     }
@@ -321,48 +288,39 @@ function bindChartEvents() {
 
   svg.addEventListener('pointermove', e => {
     if (dragging === null) return;
-    e.preventDefault();
     const pt = svgCoords(e);
-    const ax = Math.cos(ANGLES[dragging]);
-    const ay = Math.sin(ANGLES[dragging]);
-    const dx = pt.x - CX;
-    const dy = pt.y - CY;
-    const proj = dx * ax + dy * ay;
-    const level = Math.round(Math.max(1, Math.min(5, proj / (MAX_R / 5))));
-    setScoreByAxis(dragging, level);
+    const a = angles()[dragging];
+    const proj = (pt.x - CX) * Math.cos(a) + (pt.y - CY) * Math.sin(a);
+    setScore(`axis${dragging}`, Math.round(Math.max(1, Math.min(5, proj / (MAX_R / 5)))));
   });
 
   svg.addEventListener('pointerup', () => { dragging = null; });
   svg.addEventListener('pointercancel', () => { dragging = null; });
 }
 
-/* ── Render triangle SVG ─────────────────────────────────────────── */
+/* ── Render N-sided radar chart ──────────────────────────────────── */
 function renderChart() {
-  const vals = FIELDS.map(f => scores[f] || 0);
+  const n = criteria.length;
+  if (!n) return;
+  const a = angles();
+  const vals = criteria.map((_, i) => scores[`axis${i}`] || 0);
   const hasAny = vals.some(v => v > 0);
   let html = '';
 
-  // Grid rings (concentric triangles at levels 1–5)
+  // Grid rings
   for (let lv = 1; lv <= 5; lv++) {
     const r = (lv / 5) * MAX_R;
-    const pts = ANGLES.map(a =>
-      `${CX + r * Math.cos(a)},${CY + r * Math.sin(a)}`
-    ).join(' ');
+    const pts = a.map(ang => `${CX + r * Math.cos(ang)},${CY + r * Math.sin(ang)}`).join(' ');
     html += `<polygon points="${pts}" fill="none" stroke="rgba(255,255,255,${lv === 5 ? 0.14 : 0.05})" stroke-width="1"/>`;
   }
 
-  // Axis lines with tick marks
-  for (let i = 0; i < 3; i++) {
-    const a = ANGLES[i];
-    html += `<line x1="${CX}" y1="${CY}" x2="${CX + MAX_R * Math.cos(a)}" y2="${CY + MAX_R * Math.sin(a)}" stroke="rgba(${COLORS[i]},.2)" stroke-width="1.5"/>`;
-
-    // Tick marks
+  // Axis lines + ticks
+  for (let i = 0; i < n; i++) {
+    html += `<line x1="${CX}" y1="${CY}" x2="${CX + MAX_R * Math.cos(a[i])}" y2="${CY + MAX_R * Math.sin(a[i])}" stroke="rgba(${PALETTE[i % PALETTE.length]},.2)" stroke-width="1.5"/>`;
     for (let lv = 1; lv <= 5; lv++) {
       const r = (lv / 5) * MAX_R;
-      const x = CX + r * Math.cos(a);
-      const y = CY + r * Math.sin(a);
-      const px = -Math.sin(a) * 4;
-      const py = Math.cos(a) * 4;
+      const x = CX + r * Math.cos(a[i]), y = CY + r * Math.sin(a[i]);
+      const px = 4 * Math.cos(a[i] + Math.PI / 2), py = 4 * Math.sin(a[i] + Math.PI / 2);
       html += `<line x1="${x - px}" y1="${y - py}" x2="${x + px}" y2="${y + py}" stroke="rgba(255,255,255,.12)" stroke-width="1"/>`;
     }
   }
@@ -370,45 +328,43 @@ function renderChart() {
   // Data polygon
   if (hasAny) {
     const dataPts = vals.map((v, i) => {
-      const r = Math.max(v, 0) === 0 ? 0 : (v / 5) * MAX_R;
-      return `${CX + r * Math.cos(ANGLES[i])},${CY + r * Math.sin(ANGLES[i])}`;
+      const r = v === 0 ? 0 : (v / 5) * MAX_R;
+      return `${CX + r * Math.cos(a[i])},${CY + r * Math.sin(a[i])}`;
     }).join(' ');
     html += `<polygon points="${dataPts}" fill="rgba(200,180,255,.1)" stroke="rgba(200,180,255,.45)" stroke-width="2.5" stroke-linejoin="round"/>`;
   }
 
-  // Draggable vertex dots
-  for (let i = 0; i < 3; i++) {
+  // Draggable dots
+  for (let i = 0; i < n; i++) {
     const v = vals[i];
-    if (!v) continue;
     const r = (v / 5) * MAX_R;
-    const x = CX + r * Math.cos(ANGLES[i]);
-    const y = CY + r * Math.sin(ANGLES[i]);
-
-    // Outer glow
-    html += `<circle cx="${x}" cy="${y}" r="16" fill="rgba(${COLORS[i]},.15)" stroke="none"/>`;
-    // Main dot
-    html += `<circle cx="${x}" cy="${y}" r="10" fill="rgba(${COLORS[i]},.35)" stroke="rgb(${COLORS[i]})" stroke-width="2.5" style="cursor:grab"/>`;
-    // Inner dot
-    html += `<circle cx="${x}" cy="${y}" r="4" fill="rgb(${COLORS[i]})" style="pointer-events:none"/>`;
+    const x = CX + r * Math.cos(a[i]), y = CY + r * Math.sin(a[i]);
+    const c = PALETTE[i % PALETTE.length];
+    html += `<circle cx="${x}" cy="${y}" r="16" fill="rgba(${c},.15)" stroke="none"/>`;
+    html += `<circle cx="${x}" cy="${y}" r="10" fill="rgba(${c},.35)" stroke="rgb(${c})" stroke-width="2.5" style="cursor:grab"/>`;
+    html += `<circle cx="${x}" cy="${y}" r="4" fill="rgb(${c})" style="pointer-events:none"/>`;
   }
 
-  // Axis labels — positioned to avoid edge clipping
-  const labelPos = [
-    { x: CX, y: 18, anchor: 'middle', valDy: 17 },
-    { x: 70, y: CY + MAX_R * Math.sin(5*Math.PI/6) + 38, anchor: 'start', valDy: 17 },
-    { x: 330, y: CY + MAX_R * Math.sin(Math.PI/6) + 38, anchor: 'end', valDy: 17 },
-  ];
+  // Labels — positioned around the polygon
+  for (let i = 0; i < n; i++) {
+    const c = PALETTE[i % PALETTE.length];
+    const labelR = MAX_R + 28;
+    const lx = CX + labelR * Math.cos(a[i]);
+    const ly = CY + labelR * Math.sin(a[i]);
+    const anchor = Math.abs(a[i]) < 0.1 || Math.abs(a[i] - Math.PI) < 0.1 ? 'middle'
+      : Math.cos(a[i]) < -0.1 ? 'end' : Math.cos(a[i]) > 0.1 ? 'start' : 'middle';
 
-  for (let i = 0; i < 3; i++) {
-    const lp = labelPos[i];
-    html += `<text x="${lp.x}" y="${lp.y}" text-anchor="${lp.anchor}" fill="rgb(${COLORS[i]})" font-size="15" font-family="-apple-system,BlinkMacSystemFont,sans-serif" font-weight="700">${LABELS[i]}</text>`;
+    // Top axis: center above
+    let fx = lx, fy = ly;
+    if (i === 0 && n > 2) { fx = CX; fy = 18; }
 
-    if (vals[i]) {
-      html += `<text x="${lp.x}" y="${lp.y + lp.valDy}" text-anchor="${lp.anchor}" fill="rgba(${COLORS[i]},.6)" font-size="12" font-family="-apple-system,BlinkMacSystemFont,sans-serif" font-weight="500">${vals[i]} / 5</text>`;
+    html += `<text x="${fx}" y="${fy}" text-anchor="${i === 0 && n > 2 ? 'middle' : anchor}" fill="rgb(${c})" font-size="14" font-family="-apple-system,BlinkMacSystemFont,sans-serif" font-weight="700">${esc(shortLabel(criteria[i].name))}</text>`;
+    if (vals[i] > 0) {
+      html += `<text x="${fx}" y="${fy + 16}" text-anchor="${i === 0 && n > 2 ? 'middle' : anchor}" fill="rgba(${c},.6)" font-size="11" font-family="-apple-system,BlinkMacSystemFont,sans-serif" font-weight="500">${vals[i]} / 5</text>`;
     }
   }
 
-  // Center hint when empty
+  // Hint
   if (!hasAny) {
     html += `<text x="${CX}" y="${CY}" text-anchor="middle" dominant-baseline="middle" fill="rgba(235,235,245,.2)" font-size="13" font-family="-apple-system,BlinkMacSystemFont,sans-serif">Tap an axis or use buttons</text>`;
   }
@@ -418,71 +374,55 @@ function renderChart() {
 
 /* ── Submit ──────────────────────────────────────────────────────── */
 async function handleSubmit() {
-  const yourPair = document.getElementById('yourPair').value;
-  const metPair  = document.getElementById('metPair').value;
-  const notes    = document.getElementById('notes').value.trim();
+  if (!myTeam) return showBanner('Enter your team code first.', 'error');
+  const metPair = document.getElementById('metPair').value;
+  if (!metPair) return showBanner('Select who you met.', 'error');
 
-  if (!yourPair) return showBanner('Select your team in the top right.', 'error');
-  if (!metPair)  return showBanner('Select who you met.', 'error');
-  if (!scores.skillComp)    return showBanner('Set a Skills score.', 'error');
-  if (!scores.projectAlign) return showBanner('Set an Interest score.', 'error');
-  if (!scores.commFit)      return showBanner('Set a Communication score.', 'error');
+  for (let i = 0; i < criteria.length; i++) {
+    if (!scores[`axis${i}`]) return showBanner(`Set a ${criteria[i].name} score.`, 'error');
+  }
 
-  const btn = document.getElementById('submitBtn');
-  btn.disabled = true;
-  btn.textContent = 'Submitting\u2026';
+  const notes = document.getElementById('notes').value.trim();
 
   try {
     const res = await fetch('/api/rating', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        raterPair:    yourPair,
-        ratedPair:    metPair,
-        skillComp:    scores.skillComp,
-        projectAlign: scores.projectAlign,
-        commFit:      scores.commFit,
+        raterPair: myTeam.id,
+        ratedPair: metPair,
+        scores:    { ...scores },
         notes,
       }),
     });
     const data = await res.json();
-
     if (data.success) {
-      const msg = isEditing ? 'Compatibility updated!' : 'Compatibility submitted!';
-      showBanner(msg, 'success');
-
-      // Update local cache so re-selecting shows the new data
-      myRatings[metPair] = {
-        skillComp:    scores.skillComp,
-        projectAlign: scores.projectAlign,
-        commFit:      scores.commFit,
-        notes,
-      };
-      resetPartial();
+      myRatings[metPair] = { scores: { ...scores }, notes };
       markRatedPairs();
+      showBanner(isEditing ? 'Compatibility updated!' : 'Compatibility submitted!', 'success');
+      isEditing = true;
+      document.getElementById('submitBtn').textContent = 'Update';
     } else {
-      showBanner(data.error || 'Something went wrong.', 'error');
+      showBanner(data.error || 'Error submitting.', 'error');
     }
-  } catch {
-    showBanner('Network error \u2014 please try again.', 'error');
-  } finally {
-    btn.disabled = false;
-    btn.textContent = 'Submit';
-  }
-}
-
-function resetPartial() {
-  document.getElementById('metPair').value = '';
-  resetScores();
-  isEditing = false;
-  document.getElementById('submitBtn').textContent = 'Submit';
+  } catch { showBanner('Network error.', 'error'); }
 }
 
 /* ── Banner ──────────────────────────────────────────────────────── */
 function showBanner(msg, type) {
   const el = document.getElementById('banner');
   el.textContent = msg;
-  el.className = `banner show ${type}`;
-  el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-  setTimeout(() => el.classList.remove('show'), 4000);
+  el.className = `banner ${type} show`;
+  if (type !== 'info') {
+    clearTimeout(el._timer);
+    el._timer = setTimeout(hideBanner, 3500);
+  }
+}
+function hideBanner() {
+  document.getElementById('banner').className = 'banner';
+}
+
+/* ── Util ────────────────────────────────────────────────────────── */
+function esc(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }

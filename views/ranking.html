@@ -18,42 +18,41 @@
     <div class="container">
       <div id="banner" class="banner" role="alert"></div>
 
-      <form id="rankingForm" novalidate>
-
-        <div class="card">
-          <h2>Who are you?</h2>
-          <div class="field">
-            <label for="yourPair">Your pair ID</label>
-            <select id="yourPair" required>
-              <option value="">— Select your pair —</option>
-            </select>
-          </div>
+      <!-- Code gate for ranking page -->
+      <div id="rankCodeGate" class="card" style="text-align:center;">
+        <h2>Enter your team code</h2>
+        <div class="field">
+          <input type="text" id="rankCodeInput" placeholder="e.g. A3K9" maxlength="4" autocomplete="off" style="text-transform:uppercase;text-align:center;font-size:1.3rem;letter-spacing:.2em;font-weight:700;">
         </div>
+        <button type="button" class="btn-submit" id="rankCodeSubmit">Continue</button>
+        <p class="code-error" id="rankCodeError" style="display:none;">Invalid code. Check with your facilitator.</p>
+      </div>
 
+      <form id="rankingForm" novalidate style="display:none;">
         <div class="card">
           <h2>Your top 3 preferences</h2>
           <p style="font-size:.85rem;color:var(--text-muted);margin-bottom:16px;">
-            Rank the pairs from the opposite cohort you'd most like to work with.
+            Rank the teams from the other group you'd most like to work with.
           </p>
 
           <div class="field">
             <label for="rank1">1st preference</label>
-            <select id="rank1" required disabled>
-              <option value="">— Select your pair first —</option>
+            <select id="rank1" required>
+              <option value="">— Select —</option>
             </select>
           </div>
 
           <div class="field">
             <label for="rank2">2nd preference</label>
-            <select id="rank2" required disabled>
-              <option value="">— Select your pair first —</option>
+            <select id="rank2" required>
+              <option value="">— Select —</option>
             </select>
           </div>
 
           <div class="field">
             <label for="rank3">3rd preference</label>
-            <select id="rank3" required disabled>
-              <option value="">— Select your pair first —</option>
+            <select id="rank3" required>
+              <option value="">— Select —</option>
             </select>
           </div>
         </div>

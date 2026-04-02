@@ -10,15 +10,15 @@ if (fs.existsSync(envPath)) {
     if (match && !process.env[match[1]]) process.env[match[1]] = match[2];
   }
 }
-const { PAIRS } = require('./config');
+const { PAIRS, loadSession, saveSession, buildPairs } = require('./config');
 const db = require('./db');
 
 // ── Criteria config (persisted as JSON) ──────────────────────────
 const CRITERIA_PATH = path.join(__dirname, 'criteria.json');
 const DEFAULT_CRITERIA = [
-  { key: 'skillComp',    name: 'Skills',        lowLabel: 'Overlapping', highLabel: 'Complementary' },
-  { key: 'projectAlign', name: 'Interest',      lowLabel: 'Different',   highLabel: 'Similar' },
-  { key: 'commFit',      name: 'Communication', lowLabel: 'Warming up',  highLabel: 'Natural flow' },
+  { name: 'Skills',        lowLabel: 'Overlapping', highLabel: 'Complementary' },
+  { name: 'Interest',      lowLabel: 'Different',   highLabel: 'Similar' },
+  { name: 'Communication', lowLabel: 'Warming up',  highLabel: 'Natural flow' },
 ];
 
 function loadCriteria() {
@@ -50,6 +50,11 @@ function requireAdmin(req, res, next) {
   res.status(401).json({ error: 'Unauthorized' });
 }
 
+// ── Helper: parse scores from a rating row ───────────────────────
+function parseScores(row) {
+  try { return JSON.parse(row.scores); } catch { return {}; }
+}
+
 // ── HTML routes ───────────────────────────────────────────────────
 app.get('/', (_req, res) =>
   res.sendFile(path.join(__dirname, 'views', 'student.html')));
@@ -59,12 +64,40 @@ app.get('/dashboard', (_req, res) =>
   res.sendFile(path.join(__dirname, 'views', 'dashboard.html')));
 
 // ── Public API ────────────────────────────────────────────────────
+
+app.post('/api/auth', (req, res) => {
+  const { code } = req.body;
+  if (!code) return res.status(400).json({ error: 'Code required' });
+
+  const pair = db.getPairByCode(code.toUpperCase());
+  if (!pair) return res.status(404).json({ error: 'Invalid code' });
+
+  const allPairs = db.getPairs();
+  const oppositeTeams = allPairs
+    .filter(p => p.cohort !== pair.cohort)
+    .map(p => ({ id: p.id, label: p.label }));
+
+  const session = loadSession();
+  const myGroup = session.groups.find(g => g.key === pair.cohort);
+
+  res.json({
+    team: { id: pair.id, label: pair.label, cohort: pair.cohort, code: pair.code },
+    groupName: myGroup ? myGroup.name : pair.cohort,
+    oppositeTeams,
+  });
+});
+
 app.get('/api/pairs', (_req, res) => {
   const pairs = db.getPairs();
-  res.json({
-    sem3:  pairs.filter(p => p.cohort === 'sem3') .map(p => ({ id: p.id, label: p.label })),
-    sem12: pairs.filter(p => p.cohort === 'sem12').map(p => ({ id: p.id, label: p.label })),
-  });
+  const session = loadSession();
+  const groups = {};
+  for (const g of session.groups) {
+    groups[g.key] = {
+      name: g.name,
+      teams: pairs.filter(p => p.cohort === g.key).map(p => ({ id: p.id, label: p.label })),
+    };
+  }
+  res.json({ groups });
 });
 
 app.post('/api/pair/label', (req, res) => {
@@ -72,7 +105,7 @@ app.post('/api/pair/label', (req, res) => {
   if (!pairId || !label) return res.status(400).json({ error: 'Missing pairId or label' });
 
   const pair = db.getPairById(pairId);
-  if (!pair) return res.status(400).json({ error: 'Invalid pair ID' });
+  if (!pair) return res.status(400).json({ error: 'Invalid team ID' });
 
   const trimmed = label.trim().slice(0, 30);
   if (!trimmed) return res.status(400).json({ error: 'Label cannot be empty' });
@@ -87,16 +120,14 @@ app.post('/api/pair/label', (req, res) => {
 
 app.get('/api/ratings/:pairId', (req, res) => {
   const pair = db.getPairById(req.params.pairId);
-  if (!pair) return res.status(400).json({ error: 'Invalid pair ID' });
+  if (!pair) return res.status(400).json({ error: 'Invalid team ID' });
 
   const ratings = db.getRatingsForPair(req.params.pairId);
   const byRated = {};
   for (const r of ratings) {
     byRated[r.rated_pair] = {
-      skillComp:    r.skill_comp,
-      projectAlign: r.project_align,
-      commFit:      r.comm_fit,
-      notes:        r.notes || '',
+      scores: parseScores(r),
+      notes:  r.notes || '',
     };
   }
   res.json(byRated);
@@ -106,29 +137,36 @@ app.get('/api/criteria', (_req, res) => {
   res.json(loadCriteria());
 });
 
-app.post('/api/rating', (req, res) => {
-  const { raterPair, ratedPair, skillComp, projectAlign, commFit, notes } = req.body;
-  const round = req.body.round || 1; // auto-assign if not provided
+app.get('/api/session', (_req, res) => {
+  res.json(loadSession());
+});
 
-  if (!raterPair || !ratedPair || !skillComp || !projectAlign || !commFit) {
+app.post('/api/rating', (req, res) => {
+  const { raterPair, ratedPair, scores, notes } = req.body;
+
+  if (!raterPair || !ratedPair || !scores || typeof scores !== 'object') {
     return res.status(400).json({ error: 'Missing required fields' });
   }
 
   const rater = db.getPairById(raterPair);
   const rated = db.getPairById(ratedPair);
 
-  if (!rater) return res.status(400).json({ error: 'Invalid rater pair' });
-  if (!rated) return res.status(400).json({ error: 'Invalid rated pair' });
-  if (raterPair === ratedPair) return res.status(400).json({ error: 'Cannot rate your own pair' });
-  if (rater.cohort === rated.cohort) return res.status(400).json({ error: 'Cannot rate a pair from your own cohort' });
-  if (round < 1 || round > 10) return res.status(400).json({ error: 'Round must be 1\u201310' });
+  if (!rater) return res.status(400).json({ error: 'Invalid rater team' });
+  if (!rated) return res.status(400).json({ error: 'Invalid rated team' });
+  if (raterPair === ratedPair) return res.status(400).json({ error: 'Cannot rate your own team' });
+  if (rater.cohort === rated.cohort) return res.status(400).json({ error: 'Cannot rate a team from your own group' });
 
-  for (const score of [skillComp, projectAlign, commFit]) {
-    if (score < 1 || score > 5) return res.status(400).json({ error: 'Scores must be between 1 and 5' });
+  const criteria = loadCriteria();
+  const scoreValues = Object.values(scores);
+  if (scoreValues.length !== criteria.length) {
+    return res.status(400).json({ error: `Expected ${criteria.length} scores` });
+  }
+  for (const v of scoreValues) {
+    if (v < 1 || v > 5) return res.status(400).json({ error: 'Scores must be between 1 and 5' });
   }
 
   try {
-    db.upsertRating({ raterPair, ratedPair, round, skillComp, projectAlign, commFit, notes });
+    db.upsertRating({ raterPair, ratedPair, scores, notes });
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -143,18 +181,18 @@ app.post('/api/ranking', (req, res) => {
   }
 
   const pairData = db.getPairById(pair);
-  if (!pairData) return res.status(400).json({ error: 'Invalid pair ID' });
+  if (!pairData) return res.status(400).json({ error: 'Invalid team ID' });
 
   const ranked = [rank1, rank2, rank3];
   if (new Set(ranked).size !== 3) {
-    return res.status(400).json({ error: 'Each ranked pair must be different' });
+    return res.status(400).json({ error: 'Each ranked team must be different' });
   }
 
   for (const r of ranked) {
     const rData = db.getPairById(r);
-    if (!rData) return res.status(400).json({ error: `Unknown pair: ${r}` });
+    if (!rData) return res.status(400).json({ error: `Unknown team: ${r}` });
     if (rData.cohort === pairData.cohort) {
-      return res.status(400).json({ error: 'Can only rank pairs from the opposite cohort' });
+      return res.status(400).json({ error: 'Can only rank teams from the other group' });
     }
   }
 
@@ -168,37 +206,42 @@ app.post('/api/ranking', (req, res) => {
 
 // ── Protected dashboard API ───────────────────────────────────────
 app.get('/api/dashboard/matrix', requireAdmin, (_req, res) => {
-  const pairs   = db.getPairs();
-  const ratings = db.getAllRatings();
+  const pairs    = db.getPairs();
+  const ratings  = db.getAllRatings();
+  const session  = loadSession();
+  const criteria = loadCriteria();
+  const g1Key    = session.groups[0]?.key || 'group1';
+  const g2Key    = session.groups[1]?.key || 'group2';
 
-  const sem3  = pairs.filter(p => p.cohort === 'sem3');
-  const sem12 = pairs.filter(p => p.cohort === 'sem12');
+  const group1 = pairs.filter(p => p.cohort === g1Key);
+  const group2 = pairs.filter(p => p.cohort === g2Key);
 
   const cells = {};
-  for (const s3 of sem3) {
-    cells[s3.id] = {};
-    for (const s1 of sem12) {
+  for (const g1 of group1) {
+    cells[g1.id] = {};
+    for (const g2t of group2) {
       const relevant = ratings.filter(r =>
-        (r.rater_pair === s3.id && r.rated_pair === s1.id) ||
-        (r.rater_pair === s1.id && r.rated_pair === s3.id)
+        (r.rater_pair === g1.id && r.rated_pair === g2t.id) ||
+        (r.rater_pair === g2t.id && r.rated_pair === g1.id)
       );
       if (relevant.length === 0) {
-        cells[s3.id][s1.id] = null;
+        cells[g1.id][g2t.id] = null;
       } else {
-        const scores = relevant.map(r => (r.skill_comp + r.project_align + r.comm_fit) / 3);
-        const avg    = scores.reduce((a, b) => a + b, 0) / scores.length;
-        cells[s3.id][s1.id] = {
+        const avgs = relevant.map(r => {
+          const s = parseScores(r);
+          const vals = Object.values(s);
+          return vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : 0;
+        });
+        const avg = avgs.reduce((a, b) => a + b, 0) / avgs.length;
+        cells[g1.id][g2t.id] = {
           average: Math.round(avg * 100) / 100,
           count:   relevant.length,
           details: relevant.map(r => ({
-            rater:        r.rater_pair,
-            rated:        r.rated_pair,
-            round:        r.round,
-            skillComp:    r.skill_comp,
-            projectAlign: r.project_align,
-            commFit:      r.comm_fit,
-            notes:        r.notes,
-            timestamp:    r.timestamp,
+            rater:     r.rater_pair,
+            rated:     r.rated_pair,
+            scores:    parseScores(r),
+            notes:     r.notes,
+            timestamp: r.timestamp,
           })),
         };
       }
@@ -206,8 +249,10 @@ app.get('/api/dashboard/matrix', requireAdmin, (_req, res) => {
   }
 
   res.json({
-    sem3Pairs:  sem3 .map(p => ({ id: p.id, label: p.label })),
-    sem12Pairs: sem12.map(p => ({ id: p.id, label: p.label })),
+    groups: session.groups,
+    criteria,
+    group1Teams: group1.map(p => ({ id: p.id, label: p.label })),
+    group2Teams: group2.map(p => ({ id: p.id, label: p.label })),
     cells,
   });
 });
@@ -215,35 +260,37 @@ app.get('/api/dashboard/matrix', requireAdmin, (_req, res) => {
 app.get('/api/dashboard/rankings', requireAdmin, (_req, res) => {
   const pairs    = db.getPairs();
   const rankings = db.getAllRankings();
+  const session  = loadSession();
+  const g1Key    = session.groups[0]?.key || 'group1';
 
-  const pairMap     = Object.fromEntries(pairs.map(p => [p.id, p]));
-  const sem3Rnks    = rankings.filter(r => pairMap[r.pair_id]?.cohort === 'sem3');
-  const sem12RnkMap = Object.fromEntries(
+  const pairMap    = Object.fromEntries(pairs.map(p => [p.id, p]));
+  const g1Rnks     = rankings.filter(r => pairMap[r.pair_id]?.cohort === g1Key);
+  const g2RnkMap   = Object.fromEntries(
     rankings
-      .filter(r => pairMap[r.pair_id]?.cohort === 'sem12')
+      .filter(r => pairMap[r.pair_id]?.cohort !== g1Key)
       .map(r => [r.pair_id, [r.rank_1, r.rank_2, r.rank_3]])
   );
 
   const mutual   = [];
   const oneSided = [];
 
-  for (const s3r of sem3Rnks) {
-    const s3Prefs = [s3r.rank_1, s3r.rank_2, s3r.rank_3];
-    for (let i = 0; i < s3Prefs.length; i++) {
-      const s12Id = s3Prefs[i];
-      if (!s12Id) continue;
-      const s12Prefs     = sem12RnkMap[s12Id] || [];
-      const s12RankOfS3  = s12Prefs.indexOf(s3r.pair_id);
+  for (const g1r of g1Rnks) {
+    const g1Prefs = [g1r.rank_1, g1r.rank_2, g1r.rank_3];
+    for (let i = 0; i < g1Prefs.length; i++) {
+      const g2Id = g1Prefs[i];
+      if (!g2Id) continue;
+      const g2Prefs    = g2RnkMap[g2Id] || [];
+      const g2RankOfG1 = g2Prefs.indexOf(g1r.pair_id);
 
-      if (s12RankOfS3 >= 0) {
-        mutual.push({ sem3: s3r.pair_id, sem12: s12Id, sem3Rank: i + 1, sem12Rank: s12RankOfS3 + 1 });
+      if (g2RankOfG1 >= 0) {
+        mutual.push({ team1: g1r.pair_id, team2: g2Id, rank1: i + 1, rank2: g2RankOfG1 + 1 });
       } else {
-        oneSided.push({ sem3: s3r.pair_id, sem12: s12Id, sem3Rank: i + 1, sem12HasRanked: s12Prefs.length > 0 });
+        oneSided.push({ team1: g1r.pair_id, team2: g2Id, rank1: i + 1, team2HasRanked: g2Prefs.length > 0 });
       }
     }
   }
 
-  mutual.sort((a, b) => (a.sem3Rank + a.sem12Rank) - (b.sem3Rank + b.sem12Rank));
+  mutual.sort((a, b) => (a.rank1 + a.rank2) - (b.rank1 + b.rank2));
 
   res.json({ rankings, mutual, oneSided });
 });
@@ -252,6 +299,7 @@ app.get('/api/dashboard/progress', requireAdmin, (_req, res) => {
   const pairs    = db.getPairs();
   const ratings  = db.getAllRatings();
   const rankings = db.getAllRankings();
+  const session  = loadSession();
 
   const ratingCounts = {};
   for (const p of pairs) ratingCounts[p.id] = 0;
@@ -261,19 +309,20 @@ app.get('/api/dashboard/progress', requireAdmin, (_req, res) => {
   }
 
   res.json({
-    pairs:              pairs.map(p => ({ id: p.id, cohort: p.cohort, label: p.label })),
+    groups: session.groups,
+    pairs:  pairs.map(p => ({ id: p.id, cohort: p.cohort, label: p.label, code: p.code })),
     ratingCounts,
-    rankingsSubmitted:  rankings.map(r => r.pair_id),
+    rankingsSubmitted: rankings.map(r => r.pair_id),
   });
 });
 
-// ── Admin: edit pair name ─────────────────────────────────────────
+// ── Admin: edit team name ────────────────────────────────────────
 app.post('/api/dashboard/pair/label', requireAdmin, (req, res) => {
   const { pairId, label } = req.body;
   if (!pairId || !label) return res.status(400).json({ error: 'Missing pairId or label' });
 
   const pair = db.getPairById(pairId);
-  if (!pair) return res.status(400).json({ error: 'Invalid pair ID' });
+  if (!pair) return res.status(400).json({ error: 'Invalid team ID' });
 
   const trimmed = label.trim().slice(0, 30);
   if (!trimmed) return res.status(400).json({ error: 'Label cannot be empty' });
@@ -288,22 +337,26 @@ app.post('/api/dashboard/pair/label', requireAdmin, (req, res) => {
 
 // ── Admin: new session ───────────────────────────────────────────
 app.post('/api/dashboard/new-session', requireAdmin, (req, res) => {
-  const { numSem3, numSem12 } = req.body;
-  const s3  = Math.max(1, Math.min(30, parseInt(numSem3, 10)  || 10));
-  const s12 = Math.max(1, Math.min(30, parseInt(numSem12, 10) || 10));
+  const { groups } = req.body;
+
+  if (!Array.isArray(groups) || groups.length !== 2) {
+    return res.status(400).json({ error: 'Must provide exactly 2 groups' });
+  }
+
+  const cleanedGroups = groups.map((g, i) => ({
+    key:   `group${i + 1}`,
+    name:  String(g.name || '').trim().slice(0, 30) || `Group ${String.fromCharCode(65 + i)}`,
+    count: Math.max(1, Math.min(30, parseInt(g.count, 10) || 10)),
+  }));
 
   try {
     db.resetSession();
+    saveSession({ groups: cleanedGroups });
 
-    const newPairs = [];
-    for (let i = 1; i <= s3; i++) {
-      newPairs.push({ id: `S3-${String(i).padStart(2, '0')}`, cohort: 'sem3', label: `S3-${String(i).padStart(2, '0')}` });
-    }
-    for (let i = 1; i <= s12; i++) {
-      newPairs.push({ id: `S1-${String(i).padStart(2, '0')}`, cohort: 'sem12', label: `S1-${String(i).padStart(2, '0')}` });
-    }
+    const newPairs = buildPairs(cleanedGroups);
     db.seedPairs(newPairs);
-    res.json({ success: true, sem3: s3, sem12: s12 });
+
+    res.json({ success: true, groups: cleanedGroups });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -312,16 +365,14 @@ app.post('/api/dashboard/new-session', requireAdmin, (req, res) => {
 // ── Admin: save criteria ─────────────────────────────────────────
 app.post('/api/dashboard/criteria', requireAdmin, (req, res) => {
   const { criteria } = req.body;
-  if (!Array.isArray(criteria) || criteria.length !== 3) {
-    return res.status(400).json({ error: 'Criteria must be an array of 3 items' });
+  if (!Array.isArray(criteria) || criteria.length < 2 || criteria.length > 8) {
+    return res.status(400).json({ error: 'Criteria must be 2–8 axes' });
   }
 
-  const keys = ['skillComp', 'projectAlign', 'commFit'];
-  const cleaned = criteria.map((c, i) => ({
-    key:       keys[i],
-    name:      String(c.name || '').trim().slice(0, 30) || DEFAULT_CRITERIA[i].name,
-    lowLabel:  String(c.lowLabel || '').trim().slice(0, 30) || DEFAULT_CRITERIA[i].lowLabel,
-    highLabel: String(c.highLabel || '').trim().slice(0, 30) || DEFAULT_CRITERIA[i].highLabel,
+  const cleaned = criteria.map(c => ({
+    name:      String(c.name || '').trim().slice(0, 30) || 'Untitled',
+    lowLabel:  String(c.lowLabel || '').trim().slice(0, 30) || 'Low',
+    highLabel: String(c.highLabel || '').trim().slice(0, 30) || 'High',
   }));
 
   try {
@@ -334,24 +385,30 @@ app.post('/api/dashboard/criteria', requireAdmin, (req, res) => {
 
 // ── CSV exports ───────────────────────────────────────────────────
 app.get('/api/export/matrix.csv', requireAdmin, (_req, res) => {
-  const pairs   = db.getPairs();
-  const ratings = db.getAllRatings();
-  const sem3    = pairs.filter(p => p.cohort === 'sem3');
-  const sem12   = pairs.filter(p => p.cohort === 'sem12');
+  const pairs    = db.getPairs();
+  const ratings  = db.getAllRatings();
+  const session  = loadSession();
+  const g1Key    = session.groups[0]?.key || 'group1';
+  const g2Key    = session.groups[1]?.key || 'group2';
+  const group1   = pairs.filter(p => p.cohort === g1Key);
+  const group2   = pairs.filter(p => p.cohort === g2Key);
 
-  const rows = [['', ...sem12.map(p => p.id)]];
-  for (const s3 of sem3) {
-    const row = [s3.id];
-    for (const s1 of sem12) {
+  const rows = [['', ...group2.map(p => p.label || p.id)]];
+  for (const g1 of group1) {
+    const row = [g1.label || g1.id];
+    for (const g2t of group2) {
       const rel = ratings.filter(r =>
-        (r.rater_pair === s3.id && r.rated_pair === s1.id) ||
-        (r.rater_pair === s1.id && r.rated_pair === s3.id)
+        (r.rater_pair === g1.id && r.rated_pair === g2t.id) ||
+        (r.rater_pair === g2t.id && r.rated_pair === g1.id)
       );
       if (rel.length === 0) {
         row.push('');
       } else {
-        const scores = rel.map(r => (r.skill_comp + r.project_align + r.comm_fit) / 3);
-        const avg    = scores.reduce((a, b) => a + b, 0) / scores.length;
+        const avgs = rel.map(r => {
+          const vals = Object.values(parseScores(r));
+          return vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : 0;
+        });
+        const avg = avgs.reduce((a, b) => a + b, 0) / avgs.length;
         row.push((Math.round(avg * 100) / 100).toFixed(2));
       }
     }
@@ -364,14 +421,18 @@ app.get('/api/export/matrix.csv', requireAdmin, (_req, res) => {
 });
 
 app.get('/api/export/ratings.csv', requireAdmin, (_req, res) => {
-  const ratings = db.getAllRatings();
-  const header  = ['id', 'rater_pair', 'rated_pair', 'round', 'skill_comp', 'project_align', 'comm_fit', 'notes', 'timestamp'];
-  const rows    = [header, ...ratings.map(r => [
-    r.id, r.rater_pair, r.rated_pair, r.round,
-    r.skill_comp, r.project_align, r.comm_fit,
-    `"${(r.notes || '').replace(/"/g, '""')}"`,
-    r.timestamp,
-  ])];
+  const ratings  = db.getAllRatings();
+  const criteria = loadCriteria();
+  const header   = ['id', 'rater_pair', 'rated_pair', ...criteria.map(c => c.name), 'notes', 'timestamp'];
+  const rows     = [header, ...ratings.map(r => {
+    const s = parseScores(r);
+    return [
+      r.id, r.rater_pair, r.rated_pair,
+      ...criteria.map((_, i) => s[`axis${i}`] || ''),
+      `"${(r.notes || '').replace(/"/g, '""')}"`,
+      r.timestamp,
+    ];
+  })];
 
   res.setHeader('Content-Type', 'text/csv');
   res.setHeader('Content-Disposition', 'attachment; filename="ratings.csv"');

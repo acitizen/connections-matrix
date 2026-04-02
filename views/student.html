@@ -10,14 +10,37 @@
   <div class="app">
     <header class="top-bar">
       <h1>Creating Connections</h1>
-      <select id="yourPair" class="pair-pill">
-        <option value="">Your team</option>
-      </select>
+      <div class="team-badge" id="teamBadge" style="display:none;"></div>
     </header>
 
     <div id="banner" class="banner" role="alert"></div>
 
-    <main class="student-main">
+    <!-- Code entry gate -->
+    <div id="codeGate" class="code-gate">
+      <div class="code-card">
+        <h2>Enter your team code</h2>
+        <p>Your facilitator will give you a 4-character code</p>
+        <input type="text" id="codeInput" placeholder="e.g. A3K9" maxlength="4" autocomplete="off" style="text-transform:uppercase;">
+        <button type="button" class="btn-submit" id="codeSubmit">Join</button>
+        <p class="code-error" id="codeError" style="display:none;">Invalid code. Check with your facilitator.</p>
+      </div>
+    </div>
+
+    <!-- Name entry -->
+    <div class="name-overlay" id="nameOverlay">
+      <div class="name-modal">
+        <h2>What's your team name?</h2>
+        <p>Enter your name or names</p>
+        <div class="name-inputs">
+          <input type="text" id="nameInput" placeholder="e.g. Tom & Jerry" maxlength="30" autocomplete="off">
+        </div>
+        <button type="button" class="btn-submit" id="saveNames">Save</button>
+        <button type="button" class="name-skip" id="skipNames">Skip for now</button>
+      </div>
+    </div>
+
+    <!-- Main content (hidden until authenticated) -->
+    <main class="student-main" id="studentMain" style="display:none;">
       <div class="meet-row">
         <select id="metPair" disabled>
           <option value="">Who did you meet?</option>
@@ -30,58 +53,13 @@
         <svg id="radarSvg" viewBox="0 0 400 420"></svg>
       </div>
 
-      <div class="score-controls">
-        <div class="score-row" data-field="skillComp" data-color="teal">
-          <span class="score-name">Skills</span>
-          <div class="score-btns">
-            <button type="button" class="score-btn" data-value="1">1</button>
-            <button type="button" class="score-btn" data-value="2">2</button>
-            <button type="button" class="score-btn" data-value="3">3</button>
-            <button type="button" class="score-btn" data-value="4">4</button>
-            <button type="button" class="score-btn" data-value="5">5</button>
-          </div>
-          <div class="score-ends"><span>Overlapping</span><span>Complementary</span></div>
-        </div>
-        <div class="score-row" data-field="projectAlign" data-color="purple">
-          <span class="score-name">Interest</span>
-          <div class="score-btns">
-            <button type="button" class="score-btn" data-value="1">1</button>
-            <button type="button" class="score-btn" data-value="2">2</button>
-            <button type="button" class="score-btn" data-value="3">3</button>
-            <button type="button" class="score-btn" data-value="4">4</button>
-            <button type="button" class="score-btn" data-value="5">5</button>
-          </div>
-          <div class="score-ends"><span>Different</span><span>Similar</span></div>
-        </div>
-        <div class="score-row" data-field="commFit" data-color="sky">
-          <span class="score-name">Communication</span>
-          <div class="score-btns">
-            <button type="button" class="score-btn" data-value="1">1</button>
-            <button type="button" class="score-btn" data-value="2">2</button>
-            <button type="button" class="score-btn" data-value="3">3</button>
-            <button type="button" class="score-btn" data-value="4">4</button>
-            <button type="button" class="score-btn" data-value="5">5</button>
-          </div>
-          <div class="score-ends"><span>Warming up</span><span>Natural flow</span></div>
-        </div>
-      </div>
+      <!-- Score rows generated dynamically by JS -->
+      <div class="score-controls" id="scoreControls"></div>
 
       <input type="text" id="notes" class="notes-input" placeholder="Notes (optional)" maxlength="200">
 
       <button type="button" class="btn-submit" id="submitBtn">Submit</button>
     </main>
-
-    <div class="name-overlay" id="nameOverlay">
-      <div class="name-modal">
-        <h2>What's your team name?</h2>
-        <p>Enter your name or names</p>
-        <div class="name-inputs">
-          <input type="text" id="nameInput" placeholder="e.g. Tom & Jerry" maxlength="30" autocomplete="off">
-        </div>
-        <button type="button" class="btn-submit" id="saveNames">Save</button>
-        <button type="button" class="name-skip" id="skipNames">Skip for now</button>
-      </div>
-    </div>
   </div>
 
   <script src="/student.js"></script>

@@ -11,20 +11,18 @@ function initSchema() {
     CREATE TABLE IF NOT EXISTS pairs (
       id     TEXT PRIMARY KEY,
       cohort TEXT NOT NULL,
-      label  TEXT NOT NULL
+      label  TEXT NOT NULL,
+      code   TEXT UNIQUE
     );
 
     CREATE TABLE IF NOT EXISTS ratings (
       id            INTEGER PRIMARY KEY AUTOINCREMENT,
       rater_pair    TEXT    NOT NULL REFERENCES pairs(id),
       rated_pair    TEXT    NOT NULL REFERENCES pairs(id),
-      round         INTEGER NOT NULL CHECK(round BETWEEN 1 AND 10),
-      skill_comp    INTEGER NOT NULL CHECK(skill_comp BETWEEN 1 AND 5),
-      project_align INTEGER NOT NULL CHECK(project_align BETWEEN 1 AND 5),
-      comm_fit      INTEGER NOT NULL CHECK(comm_fit BETWEEN 1 AND 5),
+      scores        TEXT    NOT NULL,
       notes         TEXT,
       timestamp     TEXT    NOT NULL,
-      UNIQUE(rater_pair, rated_pair, round)
+      UNIQUE(rater_pair, rated_pair)
     );
 
     CREATE TABLE IF NOT EXISTS rankings (
@@ -34,15 +32,35 @@ function initSchema() {
       rank_3  TEXT NOT NULL REFERENCES pairs(id)
     );
   `);
+
+  // Add code column if upgrading from old schema
+  try { db.exec('ALTER TABLE pairs ADD COLUMN code TEXT UNIQUE'); } catch {}
+}
+
+function generateCode() {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  let code = '';
+  for (let i = 0; i < 4; i++) code += chars[Math.floor(Math.random() * chars.length)];
+  return code;
 }
 
 function seedPairs(pairs) {
+  const existing = db.prepare('SELECT code FROM pairs').all().map(r => r.code).filter(Boolean);
+  const usedCodes = new Set(existing);
+
   const insert = db.prepare(
-    'INSERT OR IGNORE INTO pairs (id, cohort, label) VALUES (?, ?, ?)'
+    'INSERT OR IGNORE INTO pairs (id, cohort, label, code) VALUES (?, ?, ?, ?)'
   );
   db.exec('BEGIN');
   try {
-    for (const p of pairs) insert.run(p.id, p.cohort, p.label || p.id);
+    for (const p of pairs) {
+      let code = p.code;
+      if (!code) {
+        do { code = generateCode(); } while (usedCodes.has(code));
+        usedCodes.add(code);
+      }
+      insert.run(p.id, p.cohort, p.label || p.id, code);
+    }
     db.exec('COMMIT');
   } catch (err) {
     db.exec('ROLLBACK');
@@ -58,17 +76,21 @@ function getPairById(id) {
   return db.prepare('SELECT * FROM pairs WHERE id = ?').get(id);
 }
 
-function upsertRating({ raterPair, ratedPair, round, skillComp, projectAlign, commFit, notes }) {
+function getPairByCode(code) {
+  return db.prepare('SELECT * FROM pairs WHERE code = ?').get(code.toUpperCase());
+}
+
+// scores is an object like { axis0: 3, axis1: 4, axis2: 5 }
+function upsertRating({ raterPair, ratedPair, scores, notes }) {
+  const scoresJson = typeof scores === 'string' ? scores : JSON.stringify(scores);
   db.prepare(`
-    INSERT INTO ratings (rater_pair, rated_pair, round, skill_comp, project_align, comm_fit, notes, timestamp)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    ON CONFLICT(rater_pair, rated_pair, round) DO UPDATE SET
-      skill_comp    = excluded.skill_comp,
-      project_align = excluded.project_align,
-      comm_fit      = excluded.comm_fit,
-      notes         = excluded.notes,
-      timestamp     = excluded.timestamp
-  `).run(raterPair, ratedPair, round, skillComp, projectAlign, commFit, notes || null, new Date().toISOString());
+    INSERT INTO ratings (rater_pair, rated_pair, scores, notes, timestamp)
+    VALUES (?, ?, ?, ?, ?)
+    ON CONFLICT(rater_pair, rated_pair) DO UPDATE SET
+      scores    = excluded.scores,
+      notes     = excluded.notes,
+      timestamp = excluded.timestamp
+  `).run(raterPair, ratedPair, scoresJson, notes || null, new Date().toISOString());
 }
 
 function upsertRanking({ pair, rank1, rank2, rank3 }) {
@@ -102,7 +124,6 @@ function resetSession() {
   db.exec('DELETE FROM pairs');
 }
 
-
 function getAllRankings() {
   return db.prepare('SELECT * FROM rankings ORDER BY pair_id').all();
 }
@@ -112,6 +133,7 @@ module.exports = {
   seedPairs,
   getPairs,
   getPairById,
+  getPairByCode,
   upsertRating,
   upsertRanking,
   getRatingsForPair,
