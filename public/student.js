@@ -24,9 +24,9 @@ let svg;
 let dragging = null;
 
 function shortLabel(name) {
-  if (name.length <= 8) return name;
+  if (name.length <= 12) return name;
   const abbrevs = { 'Communication': 'Comms', 'Complementarity': 'Compl.' };
-  return abbrevs[name] || name.slice(0, 7) + '.';
+  return abbrevs[name] || name.slice(0, 11) + '.';
 }
 
 function angles() {
@@ -348,7 +348,7 @@ function renderChart() {
   // Labels — positioned around the polygon
   for (let i = 0; i < n; i++) {
     const c = PALETTE[i % PALETTE.length];
-    const labelR = MAX_R + 28;
+    const labelR = MAX_R + 35;
     const lx = CX + labelR * Math.cos(a[i]);
     const ly = CY + labelR * Math.sin(a[i]);
     const anchor = Math.abs(a[i]) < 0.1 || Math.abs(a[i] - Math.PI) < 0.1 ? 'middle'
