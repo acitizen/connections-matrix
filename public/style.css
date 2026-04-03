@@ -91,7 +91,47 @@ body {
   white-space: nowrap;
 }
 
-/* ── Code entry gate ─────────────────────────────────────────────── */
+/* ── Header code entry ──────────────────────────────────────────── */
+.header-code {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.header-code input {
+  width: 70px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  border: 1.5px solid var(--border-strong);
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'SF Mono', 'Consolas', monospace;
+  font-size: .85rem;
+  font-weight: 700;
+  letter-spacing: 2px;
+  text-align: center;
+  text-transform: uppercase;
+}
+.header-code input::placeholder {
+  color: var(--text-muted);
+  letter-spacing: 0;
+  font-weight: 400;
+}
+.header-code button {
+  padding: 6px 14px;
+  border-radius: 8px;
+  border: none;
+  background: rgba(115, 204, 204, .8);
+  color: var(--bg);
+  font-size: .8rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background .15s;
+}
+.header-code button:hover {
+  background: rgba(115, 204, 204, 1);
+}
+
+/* ── Code entry gate (legacy, kept for ranking page) ─────────── */
 .code-gate {
   display: flex;
   justify-content: center;

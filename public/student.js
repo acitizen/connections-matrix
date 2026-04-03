@@ -5,6 +5,7 @@ let criteria = [];          // array of { name, lowLabel, highLabel }
 let scores = {};            // { axis0: null, axis1: null, ... }
 let myRatings = {};         // { ratedPairId: { scores: {...}, notes } }
 let isEditing = false;
+let pendingSubmit = false;  // true when submit was pressed before auth
 
 // Expanded palette for up to 8 axes
 const PALETTE = [
@@ -37,6 +38,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   svg = document.getElementById('radarSvg');
   await loadCriteria();
 
+  // Try auto-login from saved code
   const savedCode = localStorage.getItem('teamCode');
   if (savedCode) {
     const ok = await authenticateCode(savedCode);
@@ -106,19 +108,60 @@ function buildScoreRows() {
 
 /* ── Code entry ─────────────────────────────────────────────────── */
 function bindCodeEntry() {
-  document.getElementById('codeSubmit').addEventListener('click', handleCodeSubmit);
+  // Header inline code entry
+  document.getElementById('codeSubmit').addEventListener('click', handleHeaderCodeSubmit);
   document.getElementById('codeInput').addEventListener('keydown', e => {
-    if (e.key === 'Enter') handleCodeSubmit();
+    if (e.key === 'Enter') handleHeaderCodeSubmit();
   });
+
+  // Modal code entry (shown on submit without auth)
+  document.getElementById('codeSubmitModal').addEventListener('click', handleModalCodeSubmit);
+  document.getElementById('codeInputModal').addEventListener('keydown', e => {
+    if (e.key === 'Enter') handleModalCodeSubmit();
+  });
+  document.getElementById('codeSkip').addEventListener('click', () => {
+    document.getElementById('codeOverlay').classList.remove('show');
+    pendingSubmit = false;
+  });
+
   document.getElementById('submitBtn').addEventListener('click', handleSubmit);
 }
 
-async function handleCodeSubmit() {
+async function handleHeaderCodeSubmit() {
   const code = document.getElementById('codeInput').value.trim().toUpperCase();
   if (!code) return;
   const ok = await authenticateCode(code);
-  if (ok) localStorage.setItem('teamCode', code);
-  else document.getElementById('codeError').style.display = 'block';
+  if (ok) {
+    localStorage.setItem('teamCode', code);
+  } else {
+    showBanner('Invalid code. Check with your facilitator.', 'error');
+  }
+}
+
+async function handleModalCodeSubmit() {
+  const code = document.getElementById('codeInputModal').value.trim().toUpperCase();
+  if (!code) return;
+  const errorEl = document.getElementById('codeError');
+  const ok = await authenticateCode(code);
+  if (ok) {
+    localStorage.setItem('teamCode', code);
+    document.getElementById('codeOverlay').classList.remove('show');
+    errorEl.style.display = 'none';
+    // If they were trying to submit, do it now
+    if (pendingSubmit) {
+      pendingSubmit = false;
+      handleSubmit();
+    }
+  } else {
+    errorEl.style.display = 'block';
+  }
+}
+
+function showCodeModal() {
+  document.getElementById('codeInputModal').value = '';
+  document.getElementById('codeError').style.display = 'none';
+  document.getElementById('codeOverlay').classList.add('show');
+  setTimeout(() => document.getElementById('codeInputModal').focus(), 100);
 }
 
 async function authenticateCode(code) {
@@ -134,9 +177,8 @@ async function authenticateCode(code) {
     myTeam = data.team;
     oppositeTeams = data.oppositeTeams;
 
-    document.getElementById('codeGate').style.display = 'none';
-    document.getElementById('studentMain').style.display = 'block';
-
+    // Hide header code entry, show badge
+    document.getElementById('headerCode').style.display = 'none';
     const badge = document.getElementById('teamBadge');
     badge.textContent = myTeam.label === myTeam.id ? myTeam.code : myTeam.label;
     badge.style.display = 'block';
@@ -374,7 +416,13 @@ function renderChart() {
 
 /* ── Submit ──────────────────────────────────────────────────────── */
 async function handleSubmit() {
-  if (!myTeam) return showBanner('Enter your team code first.', 'error');
+  // If not authenticated, prompt for code
+  if (!myTeam) {
+    pendingSubmit = true;
+    showCodeModal();
+    return;
+  }
+
   const metPair = document.getElementById('metPair').value;
   if (!metPair) return showBanner('Select who you met.', 'error');
 
