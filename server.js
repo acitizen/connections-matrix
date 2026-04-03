@@ -405,34 +405,54 @@ app.get('/api/export/matrix.csv', requireAdmin, (_req, res) => {
   const session  = loadSession();
   const g1Key    = session.groups[0]?.key || 'group1';
   const g2Key    = session.groups[1]?.key || 'group2';
+  const g1Name   = session.groups[0]?.name || 'Group 1';
+  const g2Name   = session.groups[1]?.name || 'Group 2';
   const group1   = pairs.filter(p => p.cohort === g1Key);
   const group2   = pairs.filter(p => p.cohort === g2Key);
 
-  const rows = [['', ...group2.map(p => p.label || p.id)]];
+  // Header: each group2 team gets 3 columns
+  const header = [''];
+  for (const p of group2) {
+    const label = p.label || p.id;
+    header.push(`${label} (Combined)`, `${label} (${g1Name} gave)`, `${label} (${g2Name} gave)`);
+  }
+  const rows = [header];
+
+  const avgOf = (list) => {
+    if (!list.length) return null;
+    const avgs = list.map(r => {
+      const vals = Object.values(parseScores(r));
+      return vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : 0;
+    });
+    return Math.round((avgs.reduce((a, b) => a + b, 0) / avgs.length) * 100) / 100;
+  };
+
   for (const g1 of group1) {
     const row = [g1.label || g1.id];
     for (const g2t of group2) {
-      const rel = ratings.filter(r =>
+      const all  = ratings.filter(r =>
         (r.rater_pair === g1.id && r.rated_pair === g2t.id) ||
         (r.rater_pair === g2t.id && r.rated_pair === g1.id)
       );
-      if (rel.length === 0) {
-        row.push('');
-      } else {
-        const avgs = rel.map(r => {
-          const vals = Object.values(parseScores(r));
-          return vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : 0;
-        });
-        const avg = avgs.reduce((a, b) => a + b, 0) / avgs.length;
-        row.push((Math.round(avg * 100) / 100).toFixed(2));
-      }
+      const g1Gave = all.filter(r => r.rater_pair === g1.id);
+      const g2Gave = all.filter(r => r.rater_pair === g2t.id);
+
+      const combined = avgOf(all);
+      const g1Avg    = avgOf(g1Gave);
+      const g2Avg    = avgOf(g2Gave);
+
+      row.push(
+        combined != null ? combined.toFixed(2) : '',
+        g1Avg != null ? g1Avg.toFixed(2) : '',
+        g2Avg != null ? g2Avg.toFixed(2) : '',
+      );
     }
     rows.push(row);
   }
 
   res.setHeader('Content-Type', 'text/csv');
   res.setHeader('Content-Disposition', 'attachment; filename="compatibility-matrix.csv"');
-  res.send(rows.map(r => r.join(',')).join('\n'));
+  res.send(rows.map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n'));
 });
 
 app.get('/api/export/ratings.csv', requireAdmin, (_req, res) => {
