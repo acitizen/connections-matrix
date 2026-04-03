@@ -118,23 +118,20 @@ function renderMatrix(data) {
   for (const p of group1Teams) db_pairLabels[p.id] = p.label;
   for (const p of group2Teams) db_pairLabels[p.id] = p.label;
 
-  // Update toggle button labels with group names
-  const toggleBtns = document.querySelectorAll('#matrixToggle .toggle-btn');
-  const g1Name = groups[0]?.name || 'Group 1';
-  const g2Name = groups[1]?.name || 'Group 2';
-  toggleBtns[1].textContent = `${g1Name} gave →`;
-  toggleBtns[2].textContent = `← ${g2Name} gave`;
+  // Store group names for split view labels
+  matrixData._g1Name = groups[0]?.name || 'Group 1';
+  matrixData._g2Name = groups[1]?.name || 'Group 2';
 
   // Bind toggle events (once)
-  if (!toggleBtns[0].dataset.bound) {
-    toggleBtns.forEach(btn => {
-      btn.dataset.bound = '1';
-      btn.addEventListener('click', () => {
-        toggleBtns.forEach(b => b.classList.remove('active'));
-        btn.classList.add('active');
-        matrixView = btn.dataset.view;
-        if (matrixData) paintMatrixCells(matrixData);
-      });
+  if (!renderMatrix._bound) {
+    renderMatrix._bound = true;
+    document.getElementById('matrixToggle').addEventListener('click', e => {
+      const btn = e.target.closest('.toggle-btn');
+      if (!btn) return;
+      document.querySelectorAll('#matrixToggle .toggle-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      matrixView = btn.dataset.view;
+      if (matrixData) paintMatrixCells(matrixData);
     });
   }
 
@@ -144,7 +141,7 @@ function renderMatrix(data) {
     `Last loaded: ${new Date().toLocaleTimeString()}`;
 }
 
-function paintMatrixCells({ group1Teams, group2Teams, cells }) {
+function paintMatrixCells({ group1Teams, group2Teams, cells, _g1Name, _g2Name }) {
   const headerRow = document.getElementById('matrixHeader');
   const tbody     = document.getElementById('matrixBody');
 
@@ -171,20 +168,23 @@ function paintMatrixCells({ group1Teams, group2Teams, cells }) {
       if (!cell) {
         td.className = 'cell-empty';
         td.textContent = '—';
-      } else {
-        let avg;
-        if (matrixView === 'g1') avg = cell.g1Avg;
-        else if (matrixView === 'g2') avg = cell.g2Avg;
-        else avg = cell.average;
+      } else if (matrixView === 'split') {
+        // Show both scores stacked
+        td.className = 'cell-score cell-split';
+        td.title = `${g1.label} × ${g2.label} — click for details`;
 
-        if (avg == null) {
-          td.className = 'cell-empty';
-          td.textContent = '—';
-        } else {
-          td.className = `cell-score ${avg >= 4 ? 'cell-high' : avg >= 3 ? 'cell-mid' : 'cell-low'}`;
-          td.textContent = avg.toFixed(2);
-          td.title = `${g1.label} × ${g2.label} — click for details`;
-        }
+        const g1Val = cell.g1Avg != null ? cell.g1Avg.toFixed(1) : '—';
+        const g2Val = cell.g2Avg != null ? cell.g2Avg.toFixed(1) : '—';
+        const g1Class = cell.g1Avg != null ? (cell.g1Avg >= 4 ? 'split-high' : cell.g1Avg >= 3 ? 'split-mid' : 'split-low') : 'split-none';
+        const g2Class = cell.g2Avg != null ? (cell.g2Avg >= 4 ? 'split-high' : cell.g2Avg >= 3 ? 'split-mid' : 'split-low') : 'split-none';
+
+        td.innerHTML = `<span class="split-score ${g1Class}" title="${escHtml(_g1Name)} gave">${g1Val}</span><span class="split-score ${g2Class}" title="${escHtml(_g2Name)} gave">${g2Val}</span>`;
+        td.addEventListener('click', () => showCellModal(g1.label, g2.label, cell));
+      } else {
+        const avg = cell.average;
+        td.className = `cell-score ${avg >= 4 ? 'cell-high' : avg >= 3 ? 'cell-mid' : 'cell-low'}`;
+        td.textContent = avg.toFixed(2);
+        td.title = `${g1.label} × ${g2.label} — click for details`;
         td.addEventListener('click', () => showCellModal(g1.label, g2.label, cell));
       }
 
