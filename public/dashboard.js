@@ -356,14 +356,14 @@ function renderProgress({ groups, pairs, ratingCounts, rankingsSubmitted }) {
   }
 }
 
-/* ── Settings: Team Codes ──────────────────────────────────────── */
+/* ── Team Codes tab ───────────────────────────────────────────── */
 async function loadTeamCodes() {
   const res  = await authFetch('/api/dashboard/progress');
   const data = await res.json();
   const grid = document.getElementById('teamCodesGrid');
   grid.innerHTML = '';
 
-  // Also populate bulk names columns
+  // Also populate bulk names columns in settings
   const bulkCols = document.getElementById('bulkNamesCols');
   bulkCols.innerHTML = '';
 

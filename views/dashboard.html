@@ -37,6 +37,7 @@
         <button class="active" data-tab="matrix">Compatibility Matrix</button>
         <button data-tab="matches">Preference Matches</button>
         <button data-tab="progress">Submission Tracker</button>
+        <button data-tab="codes">Team Codes</button>
         <hr style="border:none;border-top:1px solid var(--border);margin:12px 0;">
         <button data-tab="exports" style="font-size:.8rem;">Exports</button>
         <button data-tab="settings" style="font-size:.8rem;">Settings</button>
@@ -98,19 +99,20 @@
           </div>
         </div>
 
+        <!-- Team Codes tab -->
+        <div class="tab-panel" id="tab-codes">
+          <div class="section-header"><h2>Team Codes</h2></div>
+          <p style="font-size:.85rem;color:var(--text-muted);margin-bottom:12px;">Give each team their code to log in. Click to copy.</p>
+          <div style="display:flex;gap:8px;margin-bottom:16px;">
+            <button class="btn-submit" id="printCodesBtn" style="max-width:200px;background:var(--text-muted);font-size:.85rem;">Print Codes</button>
+            <button class="btn-submit" id="copyAllCodesBtn" style="max-width:200px;background:var(--text-muted);font-size:.85rem;">Copy All Codes</button>
+          </div>
+          <div id="teamCodesGrid" class="team-codes-grid"></div>
+        </div>
+
         <!-- Settings tab -->
         <div class="tab-panel" id="tab-settings">
           <div class="section-header"><h2>Settings</h2></div>
-
-          <div class="settings-section">
-            <h3>Team Codes</h3>
-            <p>Give each team their code to log in. Click to copy.</p>
-            <div style="display:flex;gap:8px;margin-bottom:12px;">
-              <button class="btn-submit" id="printCodesBtn" style="max-width:200px;background:var(--text-muted);font-size:.85rem;">Print Codes</button>
-              <button class="btn-submit" id="copyAllCodesBtn" style="max-width:200px;background:var(--text-muted);font-size:.85rem;">Copy All Codes</button>
-            </div>
-            <div id="teamCodesGrid" class="team-codes-grid"></div>
-          </div>
 
           <div class="settings-section">
             <h3>Bulk Add Names</h3>
