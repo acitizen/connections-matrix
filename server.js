@@ -233,15 +233,30 @@ app.get('/api/dashboard/matrix', requireAdmin, (_req, res) => {
           return vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : 0;
         });
         const avg = avgs.reduce((a, b) => a + b, 0) / avgs.length;
+        // Compute per-direction averages
+        const g1Ratings = relevant.filter(r => r.rater_pair === g1.id);
+        const g2Ratings = relevant.filter(r => r.rater_pair === g2t.id);
+        const dirAvg = (list) => {
+          if (!list.length) return null;
+          const a = list.map(r => {
+            const vals = Object.values(parseScores(r));
+            return vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : 0;
+          });
+          return Math.round((a.reduce((x, y) => x + y, 0) / a.length) * 100) / 100;
+        };
+
         cells[g1.id][g2t.id] = {
-          average: Math.round(avg * 100) / 100,
-          count:   relevant.length,
-          details: relevant.map(r => ({
-            rater:     r.rater_pair,
-            rated:     r.rated_pair,
-            scores:    parseScores(r),
-            notes:     r.notes,
-            timestamp: r.timestamp,
+          average:  Math.round(avg * 100) / 100,
+          g1Avg:    dirAvg(g1Ratings),
+          g2Avg:    dirAvg(g2Ratings),
+          count:    relevant.length,
+          details:  relevant.map(r => ({
+            rater:      r.rater_pair,
+            rated:      r.rated_pair,
+            raterGroup: r.rater_pair === g1.id ? g1Key : g2Key,
+            scores:     parseScores(r),
+            notes:      r.notes,
+            timestamp:  r.timestamp,
           })),
         };
       }

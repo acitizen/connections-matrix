@@ -632,6 +632,35 @@ select option, select optgroup {
 .tab-panel.active { display: block; }
 
 /* ── Matrix table ───────────────────────────────────────────────── */
+.matrix-toggle {
+  display: inline-flex;
+  background: var(--bg-raised);
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  overflow: hidden;
+}
+.toggle-btn {
+  padding: 5px 14px;
+  font-size: .8rem;
+  font-weight: 600;
+  background: transparent;
+  color: var(--text-muted);
+  border: none;
+  cursor: pointer;
+  transition: background .15s, color .15s;
+}
+.toggle-btn:not(:last-child) {
+  border-right: 1px solid var(--border);
+}
+.toggle-btn.active {
+  background: var(--accent-teal);
+  color: var(--bg);
+}
+.toggle-btn:hover:not(.active) {
+  background: rgba(115, 204, 204, .15);
+  color: var(--text);
+}
+
 .matrix-wrap {
   overflow: auto;
   max-height: calc(100vh - 200px);

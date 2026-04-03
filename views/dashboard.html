@@ -50,15 +50,20 @@
             <h2>Compatibility Matrix</h2>
             <small id="matrixUpdated" style="color:var(--text-muted);font-size:.8rem;"></small>
           </div>
-          <p style="font-size:.85rem;color:var(--text-muted);margin-bottom:12px;">
-            Average score per team combination (1–5). Click a cell for details.
-            <span style="margin-left:8px;">
+          <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;flex-wrap:wrap;">
+            <div class="matrix-toggle" id="matrixToggle">
+              <button class="toggle-btn active" data-view="combined">Combined</button>
+              <button class="toggle-btn" data-view="g1">— gave →</button>
+              <button class="toggle-btn" data-view="g2">← gave —</button>
+            </div>
+            <span style="font-size:.85rem;color:var(--text-muted);">Click a cell for details.</span>
+            <span>
               <span style="background:#dcfce7;padding:2px 8px;border-radius:4px;font-size:.75rem;">&#8805; 4.0</span>
               <span style="background:#fef9c3;padding:2px 8px;border-radius:4px;font-size:.75rem;margin-left:4px;">3.0–3.9</span>
               <span style="background:#fee2e2;padding:2px 8px;border-radius:4px;font-size:.75rem;margin-left:4px;">&lt; 3.0</span>
               <span style="background:#f8fafc;padding:2px 8px;border-radius:4px;font-size:.75rem;margin-left:4px;">No data</span>
             </span>
-          </p>
+          </div>
           <div class="matrix-wrap">
             <table class="matrix-table" id="matrixTable">
               <thead><tr id="matrixHeader"></tr></thead>
