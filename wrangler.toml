@@ -1,0 +1,21 @@
+name = "creating-connections"
+main = "src/index.js"
+compatibility_date = "2024-12-01"
+compatibility_flags = ["nodejs_compat"]
+
+# Static assets — serves CSS, JS, HTML from public/
+# html_handling: /login → login.html, /dashboard → dashboard.html, / → index.html
+[assets]
+directory = "./public"
+html_handling = "auto-trailing-slash"
+not_found_handling = "none"
+
+# D1 SQLite database
+[[d1_databases]]
+binding = "DB"
+database_name = "creating-connections-db"
+database_id = "fce3e38f-dada-4d3b-8324-5adcf43e7c74"
+
+# Environment variables (set via `wrangler secret put`)
+# SESSION_SECRET  — used to sign JWT auth cookies
+# ADMIN_PASSWORD  — initial admin password (default: "admin")

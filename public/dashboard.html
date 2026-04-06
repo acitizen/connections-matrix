@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Creating Connections — Dashboard</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+
+  <!-- ── Layer 1: Session list ─────────────────────────────────────── -->
+  <div id="view-sessions" class="sessions-page" style="display:none;">
+    <div class="sessions-topbar">
+      <h1>Creating Connections</h1>
+      <div class="topbar-right">
+        <span id="sessionsUserLabel" class="user-label"></span>
+        <button class="btn-logout" id="sessionsLogout">Logout</button>
+      </div>
+    </div>
+
+    <div class="sessions-body">
+      <div class="sessions-header">
+        <h2>Sessions</h2>
+        <button class="btn-submit btn-sm" id="newSessionBtn">+ New Session</button>
+      </div>
+
+      <div id="activeSessionsSection">
+        <div class="sessions-section-label">Active</div>
+        <div id="activeSessionsList" class="sessions-grid"></div>
+      </div>
+
+      <div id="archivedSessionsSection" style="display:none;">
+        <button class="sessions-archived-toggle" id="archivedToggle">▸ Archived sessions</button>
+        <div id="archivedSessionsList" class="sessions-grid" style="display:none;"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Layer 2: Session detail ───────────────────────────────────── -->
+  <div id="view-detail" class="dash-shell" style="display:none;">
+
+    <nav class="dash-sidebar">
+      <div class="sidebar-session">
+        <button class="back-btn" id="backToSessions">← Sessions</button>
+        <div class="sidebar-session-name" id="sidebarName"></div>
+        <div id="sidebarStatus" class="session-status-badge"></div>
+      </div>
+
+      <div class="sidebar-nav" id="sidebarNav">
+        <button class="nav-item active" data-view="overview">Overview</button>
+        <button class="nav-item" data-view="matrix">Matrix</button>
+      </div>
+
+      <div class="sidebar-divider"></div>
+
+      <div class="sidebar-secondary">
+        <button class="nav-item" data-view="codes">Codes</button>
+        <button class="nav-item" data-view="setup">Customise</button>
+        <button class="nav-item" data-view="exports">Exports</button>
+        <button class="nav-item admin-only" data-view="users" style="display:none;">Users</button>
+      </div>
+
+      <div class="sidebar-footer">
+        <span id="sidebarUserLabel" class="user-label-sm"></span>
+        <button class="btn-logout-sm" id="detailLogout">Logout</button>
+      </div>
+    </nav>
+
+    <div class="dash-main">
+      <div class="dash-content" id="dashContent"></div>
+    </div>
+  </div>
+
+  <!-- ── New Session Modal ─────────────────────────────────────────── -->
+  <div class="modal-overlay" id="newSessionModal" style="display:none;">
+    <div class="modal modal-wide">
+      <button class="close-btn" id="newSessionClose">&times;</button>
+      <h3>New Session</h3>
+      <div class="field">
+        <label>Session name</label>
+        <input type="text" id="nsName" placeholder="e.g. Creating Connections Sem 2 2026" maxlength="60">
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:4px;">
+        <div>
+          <div class="settings-group-label">Group 1</div>
+          <div class="field"><label>Name</label><input type="text" id="nsG1Name" maxlength="30" value="Group A"></div>
+          <div class="field"><label>Students per group</label><input type="number" id="nsG1Count" min="1" max="30" value="10"></div>
+        </div>
+        <div>
+          <div class="settings-group-label">Group 2</div>
+          <div class="field"><label>Name</label><input type="text" id="nsG2Name" maxlength="30" value="Group B"></div>
+          <div class="field"><label>Students per group</label><input type="number" id="nsG2Count" min="1" max="30" value="10"></div>
+        </div>
+      </div>
+      <p id="nsError" class="form-error" style="display:none;"></p>
+      <button class="btn-submit" id="nsCreate" style="margin-top:8px;">Create Session</button>
+    </div>
+  </div>
+
+  <!-- ── Cell detail modal ─────────────────────────────────────────── -->
+  <div class="modal-overlay" id="modalOverlay" style="display:none;">
+    <div class="modal">
+      <button class="close-btn" id="modalClose">&times;</button>
+      <h3 id="modalTitle"></h3>
+      <div id="modalAvg" style="font-size:1.2rem;font-weight:700;margin-bottom:14px;"></div>
+      <div id="modalDetails"></div>
+    </div>
+  </div>
+
+  <script src="/dashboard.js"></script>
+</body>
+</html>

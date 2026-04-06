@@ -1,15 +1,19 @@
 {
-  "name": "connections-matrix",
-  "version": "1.0.0",
-  "description": "Connections matrix app for postgraduate design studio group formation",
-  "main": "server.js",
+  "name": "creating-connections-cf",
+  "version": "2.0.0",
+  "description": "Creating Connections — Cloudflare Workers + D1 edition",
+  "private": true,
   "scripts": {
-    "start": "node server.js"
-  },
-  "engines": {
-    "node": ">=22.0.0"
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "db:create": "wrangler d1 create creating-connections-db",
+    "db:migrate": "wrangler d1 execute creating-connections-db --file=migrations/0001_schema.sql",
+    "db:migrate:local": "wrangler d1 execute creating-connections-db --local --file=migrations/0001_schema.sql"
   },
   "dependencies": {
-    "express": "^4.18.2"
+    "hono": "^4.4.0"
+  },
+  "devDependencies": {
+    "wrangler": "^4.80.0"
   }
 }

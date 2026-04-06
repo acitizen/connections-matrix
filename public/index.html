@@ -24,10 +24,11 @@
     <!-- Code prompt modal (shown when submitting without auth) -->
     <div class="name-overlay" id="codeOverlay">
       <div class="name-modal">
-        <h2>Enter your team code</h2>
+        <h2>Enter your code</h2>
         <p>Your facilitator will give you a 4-character code</p>
         <div class="name-inputs">
-          <input type="text" id="codeInputModal" placeholder="e.g. A3K9" maxlength="4" autocomplete="off" style="text-transform:uppercase;">
+          <input type="text" id="codeInputModal" placeholder="e.g. A3K9" maxlength="4"
+                 autocomplete="off" autocapitalize="characters" style="text-transform:uppercase;">
         </div>
         <p class="code-error" id="codeError" style="display:none;">Invalid code. Check with your facilitator.</p>
         <button type="button" class="btn-submit" id="codeSubmitModal">Join</button>
@@ -48,7 +49,6 @@
       </div>
     </div>
 
-    <!-- Main content (always visible) -->
     <main class="student-main" id="studentMain">
       <div class="meet-row">
         <select id="metPair" disabled>
@@ -62,7 +62,6 @@
         <svg id="radarSvg" viewBox="-60 0 520 420"></svg>
       </div>
 
-      <!-- Score rows generated dynamically by JS -->
       <div class="score-controls" id="scoreControls"></div>
 
       <input type="text" id="notes" class="notes-input" placeholder="Notes (optional)" maxlength="200">

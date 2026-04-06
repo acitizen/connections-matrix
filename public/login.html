@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Creating Connections — Login</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <div class="login-page">
+    <div class="login-card">
+      <h1 class="login-title">Creating Connections</h1>
+      <p class="login-subtitle">Facilitator Dashboard</p>
+
+      <div id="loginError" class="login-error" style="display:none;"></div>
+
+      <!-- Sign in form -->
+      <div id="signinForm">
+        <div class="field">
+          <label for="username">Username</label>
+          <input type="text" id="username" autocomplete="username" autocapitalize="none" spellcheck="false" placeholder="username">
+        </div>
+        <div class="field">
+          <label for="password">Password</label>
+          <input type="password" id="password" autocomplete="current-password" placeholder="password">
+        </div>
+        <button class="btn-submit" id="loginBtn">Sign in</button>
+        <p class="login-toggle">Don't have an account? <a href="#" id="showRegister">Create one</a></p>
+      </div>
+
+      <!-- Register form -->
+      <div id="registerForm" style="display:none;">
+        <div class="field">
+          <label for="regUsername">Username</label>
+          <input type="text" id="regUsername" autocomplete="username" autocapitalize="none" spellcheck="false" placeholder="choose a username">
+        </div>
+        <div class="field">
+          <label for="regPassword">Password</label>
+          <input type="password" id="regPassword" autocomplete="new-password" placeholder="min 6 characters">
+        </div>
+        <button class="btn-submit" id="registerBtn">Create account</button>
+        <p class="login-toggle">Already have an account? <a href="#" id="showLogin">Sign in</a></p>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const usernameEl = document.getElementById('username');
+    const passwordEl = document.getElementById('password');
+    const loginBtn   = document.getElementById('loginBtn');
+    const errorEl    = document.getElementById('loginError');
+
+    const signinForm   = document.getElementById('signinForm');
+    const registerForm = document.getElementById('registerForm');
+    const regUsername  = document.getElementById('regUsername');
+    const regPassword  = document.getElementById('regPassword');
+    const registerBtn  = document.getElementById('registerBtn');
+
+    // Toggle between forms
+    document.getElementById('showRegister').addEventListener('click', e => {
+      e.preventDefault();
+      signinForm.style.display = 'none';
+      registerForm.style.display = 'block';
+      errorEl.style.display = 'none';
+      regUsername.focus();
+    });
+    document.getElementById('showLogin').addEventListener('click', e => {
+      e.preventDefault();
+      registerForm.style.display = 'none';
+      signinForm.style.display = 'block';
+      errorEl.style.display = 'none';
+      usernameEl.focus();
+    });
+
+    async function doLogin() {
+      const username = usernameEl.value.trim();
+      const password = passwordEl.value;
+      if (!username || !password) { showError('Enter username and password.'); return; }
+
+      loginBtn.disabled = true;
+      loginBtn.textContent = 'Signing in…';
+      errorEl.style.display = 'none';
+
+      try {
+        const res = await fetch('/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username, password }),
+        });
+        const data = await res.json();
+        if (res.ok) {
+          window.location.href = '/dashboard';
+        } else {
+          showError(data.error || 'Sign in failed.');
+          loginBtn.disabled = false;
+          loginBtn.textContent = 'Sign in';
+        }
+      } catch {
+        showError('Network error. Please try again.');
+        loginBtn.disabled = false;
+        loginBtn.textContent = 'Sign in';
+      }
+    }
+
+    async function doRegister() {
+      const username = regUsername.value.trim();
+      const password = regPassword.value;
+      if (!username || !password) { showError('Enter a username and password.'); return; }
+      if (username.length < 3) { showError('Username must be at least 3 characters.'); return; }
+      if (password.length < 6) { showError('Password must be at least 6 characters.'); return; }
+
+      registerBtn.disabled = true;
+      registerBtn.textContent = 'Creating account…';
+      errorEl.style.display = 'none';
+
+      try {
+        const res = await fetch('/api/auth/register', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username, password }),
+        });
+        const data = await res.json();
+        if (res.ok) {
+          window.location.href = '/dashboard';
+        } else {
+          showError(data.error || 'Registration failed.');
+          registerBtn.disabled = false;
+          registerBtn.textContent = 'Create account';
+        }
+      } catch {
+        showError('Network error. Please try again.');
+        registerBtn.disabled = false;
+        registerBtn.textContent = 'Create account';
+      }
+    }
+
+    function showError(msg) {
+      errorEl.textContent = msg;
+      errorEl.style.display = 'block';
+    }
+
+    loginBtn.addEventListener('click', doLogin);
+    registerBtn.addEventListener('click', doRegister);
+    [usernameEl, passwordEl].forEach(el => {
+      el.addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
+    });
+    [regUsername, regPassword].forEach(el => {
+      el.addEventListener('keydown', e => { if (e.key === 'Enter') doRegister(); });
+    });
+
+    // Focus username on load
+    usernameEl.focus();
+  </script>
+</body>
+</html>

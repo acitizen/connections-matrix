@@ -1,25 +1,17 @@
 /* ── State ───────────────────────────────────────────────────────── */
 let myTeam = null;
 let oppositeTeams = [];
-let criteria = [];          // array of { name, lowLabel, highLabel }
-let scores = {};            // { axis0: null, axis1: null, ... }
-let myRatings = {};         // { ratedPairId: { scores: {...}, notes } }
+let criteria = [];
+let scores = {};
+let myRatings = {};
 let isEditing = false;
-let pendingSubmit = false;  // true when submit was pressed before auth
+let pendingSubmit = false;
 
-// Expanded palette for up to 8 axes
 const PALETTE = [
-  '115,204,204',  // teal
-  '217,166,230',  // pink
-  '170,130,255',  // purple
-  '255,183,110',  // orange
-  '130,220,130',  // green
-  '255,130,150',  // coral
-  '130,190,255',  // blue
-  '230,210,120',  // gold
+  '115,204,204', '217,166,230', '170,130,255', '255,183,110',
+  '130,220,130', '255,130,150', '130,190,255', '230,210,120',
 ];
 const COLOR_NAMES = ['teal','pink','purple','orange','green','coral','blue','gold'];
-
 const CX = 200, CY = 195, MAX_R = 145;
 let svg;
 let dragging = null;
@@ -36,12 +28,12 @@ function angles() {
 
 document.addEventListener('DOMContentLoaded', async () => {
   svg = document.getElementById('radarSvg');
-  await loadCriteria();
+  await loadCriteria();   // load default criteria so chart renders immediately
 
-  // Try auto-login from saved code
-  const savedCode = localStorage.getItem('teamCode');
-  if (savedCode) {
-    const ok = await authenticateCode(savedCode);
+  // Try auto-login from saved team code
+  const savedTeamCode = localStorage.getItem('teamCode');
+  if (savedTeamCode) {
+    const ok = await authenticateCode(savedTeamCode);
     if (!ok) localStorage.removeItem('teamCode');
   }
 
@@ -51,70 +43,13 @@ document.addEventListener('DOMContentLoaded', async () => {
   renderChart();
 });
 
-/* ── Load criteria and build score UI ───────────────────────────── */
-async function loadCriteria() {
-  try {
-    const res = await fetch('/api/criteria');
-    const data = await res.json();
-    if (Array.isArray(data) && data.length >= 2) criteria = data;
-    else criteria = data;
-  } catch {}
-
-  if (!criteria.length) {
-    criteria = [
-      { name: 'Skills',        lowLabel: 'Overlapping', highLabel: 'Complementary' },
-      { name: 'Interest',      lowLabel: 'Different',   highLabel: 'Similar' },
-      { name: 'Communication', lowLabel: 'Warming up',  highLabel: 'Natural flow' },
-    ];
-  }
-
-  // Init scores
-  scores = {};
-  criteria.forEach((_, i) => { scores[`axis${i}`] = null; });
-
-  // Build score button rows
-  buildScoreRows();
-}
-
-function buildScoreRows() {
-  const container = document.getElementById('scoreControls');
-  container.innerHTML = '';
-
-  criteria.forEach((c, i) => {
-    const colorName = COLOR_NAMES[i % COLOR_NAMES.length];
-    const row = document.createElement('div');
-    row.className = 'score-row';
-    row.dataset.axis = `axis${i}`;
-    row.dataset.color = colorName;
-    row.style.setProperty('--sc', PALETTE[i % PALETTE.length]);
-
-    row.innerHTML = `
-      <span class="score-name">${esc(c.name)}</span>
-      <div class="score-btns">
-        ${[1,2,3,4,5].map(v => `<button type="button" class="score-btn" data-value="${v}">${v}</button>`).join('')}
-      </div>
-      <div class="score-ends"><span>${esc(c.lowLabel)}</span><span>${esc(c.highLabel)}</span></div>
-    `;
-
-    row.querySelectorAll('.score-btn').forEach(btn => {
-      btn.addEventListener('click', () => {
-        setScore(`axis${i}`, parseInt(btn.dataset.value, 10));
-      });
-    });
-
-    container.appendChild(row);
-  });
-}
-
-/* ── Code entry ─────────────────────────────────────────────────── */
+/* ── Team code entry ────────────────────────────────────────────── */
 function bindCodeEntry() {
-  // Header inline code entry
   document.getElementById('codeSubmit').addEventListener('click', handleHeaderCodeSubmit);
   document.getElementById('codeInput').addEventListener('keydown', e => {
     if (e.key === 'Enter') handleHeaderCodeSubmit();
   });
 
-  // Modal code entry (shown on submit without auth)
   document.getElementById('codeSubmitModal').addEventListener('click', handleModalCodeSubmit);
   document.getElementById('codeInputModal').addEventListener('keydown', e => {
     if (e.key === 'Enter') handleModalCodeSubmit();
@@ -131,27 +66,21 @@ async function handleHeaderCodeSubmit() {
   const code = document.getElementById('codeInput').value.trim().toUpperCase();
   if (!code) return;
   const ok = await authenticateCode(code);
-  if (ok) {
-    localStorage.setItem('teamCode', code);
-  } else {
-    showBanner('Invalid code. Check with your facilitator.', 'error');
-  }
+  if (ok) localStorage.setItem('teamCode', code);
+  else showBanner('Invalid code. Check with your facilitator.', 'error');
 }
 
 async function handleModalCodeSubmit() {
-  const code = document.getElementById('codeInputModal').value.trim().toUpperCase();
-  if (!code) return;
+  const code    = document.getElementById('codeInputModal').value.trim().toUpperCase();
   const errorEl = document.getElementById('codeError');
+  if (!code) return;
+
   const ok = await authenticateCode(code);
   if (ok) {
     localStorage.setItem('teamCode', code);
     document.getElementById('codeOverlay').classList.remove('show');
     errorEl.style.display = 'none';
-    // If they were trying to submit, do it now
-    if (pendingSubmit) {
-      pendingSubmit = false;
-      handleSubmit();
-    }
+    pendingSubmit = false;
   } else {
     errorEl.style.display = 'block';
   }
@@ -174,15 +103,17 @@ async function authenticateCode(code) {
     if (!res.ok) return false;
 
     const data = await res.json();
-    myTeam = data.team;
+    myTeam        = data.team;
     oppositeTeams = data.oppositeTeams;
 
-    // Hide header code entry, show badge
+    // Show badge, hide header code entry
     document.getElementById('headerCode').style.display = 'none';
     const badge = document.getElementById('teamBadge');
     badge.textContent = myTeam.label === myTeam.id ? myTeam.code : myTeam.label;
     badge.style.display = 'block';
 
+    // Reload session-specific criteria
+    await loadCriteria();
     populateMetDropdown();
     await loadMyRatings(myTeam.id);
     markRatedPairs();
@@ -192,6 +123,51 @@ async function authenticateCode(code) {
   } catch { return false; }
 }
 
+/* ── Load criteria ──────────────────────────────────────────────── */
+async function loadCriteria() {
+  try {
+    const pairId = myTeam?.id || '';
+    const res  = await fetch(`/api/criteria?pair=${encodeURIComponent(pairId)}`);
+    const data = await res.json();
+    if (Array.isArray(data) && data.length >= 2) criteria = data;
+  } catch {}
+
+  if (!criteria.length) {
+    criteria = [
+      { name: 'Skills',        lowLabel: 'Overlapping', highLabel: 'Complementary' },
+      { name: 'Interest',      lowLabel: 'Different',   highLabel: 'Similar' },
+      { name: 'Communication', lowLabel: 'Warming up',  highLabel: 'Natural flow' },
+    ];
+  }
+
+  scores = {};
+  criteria.forEach((_, i) => { scores[`axis${i}`] = null; });
+  buildScoreRows();
+}
+
+function buildScoreRows() {
+  const container = document.getElementById('scoreControls');
+  container.innerHTML = '';
+  criteria.forEach((c, i) => {
+    const row = document.createElement('div');
+    row.className = 'score-row';
+    row.dataset.axis  = `axis${i}`;
+    row.dataset.color = COLOR_NAMES[i % COLOR_NAMES.length];
+    row.style.setProperty('--sc', PALETTE[i % PALETTE.length]);
+    row.innerHTML = `
+      <span class="score-name">${esc(c.name)}</span>
+      <div class="score-btns">
+        ${[1,2,3,4,5].map(v => `<button type="button" class="score-btn" data-value="${v}">${v}</button>`).join('')}
+      </div>
+      <div class="score-ends"><span>${esc(c.lowLabel)}</span><span>${esc(c.highLabel)}</span></div>`;
+    row.querySelectorAll('.score-btn').forEach(btn => {
+      btn.addEventListener('click', () => setScore(`axis${i}`, parseInt(btn.dataset.value, 10)));
+    });
+    container.appendChild(row);
+  });
+}
+
+/* ── Met dropdown ───────────────────────────────────────────────── */
 function populateMetDropdown() {
   const sel = document.getElementById('metPair');
   sel.innerHTML = '<option value="">Who did you meet?</option>';
@@ -260,12 +236,9 @@ function markRatedPairs() {
 function handleMetPairChange(metPairId) {
   resetScores();
   const existing = metPairId ? myRatings[metPairId] : null;
-
-  if (existing && existing.scores) {
+  if (existing?.scores) {
     isEditing = true;
-    for (const [key, val] of Object.entries(existing.scores)) {
-      setScore(key, val);
-    }
+    for (const [key, val] of Object.entries(existing.scores)) setScore(key, val);
     document.getElementById('notes').value = existing.notes || '';
     document.getElementById('submitBtn').textContent = 'Update';
     showBanner('Previously submitted — edit and update if needed.', 'info');
@@ -286,11 +259,9 @@ function resetScores() {
 function setScore(axis, value) {
   scores[axis] = value;
   const row = document.querySelector(`.score-row[data-axis="${axis}"]`);
-  if (row) {
-    row.querySelectorAll('.score-btn').forEach(b => {
-      b.classList.toggle('active', parseInt(b.dataset.value, 10) === value);
-    });
-  }
+  if (row) row.querySelectorAll('.score-btn').forEach(b => {
+    b.classList.toggle('active', parseInt(b.dataset.value, 10) === value);
+  });
   renderChart();
 }
 
@@ -303,71 +274,62 @@ function svgCoords(e) {
 function bindChartEvents() {
   svg.addEventListener('pointerdown', e => {
     const pt = svgCoords(e);
-    const a = angles();
+    const a  = angles();
     for (let i = 0; i < criteria.length; i++) {
-      const v = scores[`axis${i}`] || 0;
-      const r = (v / 5) * MAX_R;
+      const v  = scores[`axis${i}`] || 0;
+      const r  = (v / 5) * MAX_R;
       const vx = CX + r * Math.cos(a[i]);
       const vy = CY + r * Math.sin(a[i]);
       if (Math.hypot(pt.x - vx, pt.y - vy) < 30) {
-        dragging = i;
-        svg.setPointerCapture(e.pointerId);
-        return;
+        dragging = i; svg.setPointerCapture(e.pointerId); return;
       }
     }
     for (let i = 0; i < criteria.length; i++) {
-      const dx = pt.x - CX, dy = pt.y - CY;
+      const dx   = pt.x - CX, dy = pt.y - CY;
       const proj = dx * Math.cos(a[i]) + dy * Math.sin(a[i]);
       const perp = Math.abs(-dx * Math.sin(a[i]) + dy * Math.cos(a[i]));
       if (proj > 0 && proj <= MAX_R + 15 && perp < 35) {
         setScore(`axis${i}`, Math.round(Math.max(1, Math.min(5, proj / (MAX_R / 5)))));
-        dragging = i;
-        svg.setPointerCapture(e.pointerId);
-        return;
+        dragging = i; svg.setPointerCapture(e.pointerId); return;
       }
     }
   });
-
   svg.addEventListener('pointermove', e => {
     if (dragging === null) return;
-    const pt = svgCoords(e);
-    const a = angles()[dragging];
-    const proj = (pt.x - CX) * Math.cos(a) + (pt.y - CY) * Math.sin(a);
+    const pt   = svgCoords(e);
+    const ang  = angles()[dragging];
+    const proj = (pt.x - CX) * Math.cos(ang) + (pt.y - CY) * Math.sin(ang);
     setScore(`axis${dragging}`, Math.round(Math.max(1, Math.min(5, proj / (MAX_R / 5)))));
   });
-
-  svg.addEventListener('pointerup', () => { dragging = null; });
+  svg.addEventListener('pointerup',     () => { dragging = null; });
   svg.addEventListener('pointercancel', () => { dragging = null; });
 }
 
-/* ── Render N-sided radar chart ──────────────────────────────────── */
+/* ── Render radar chart ─────────────────────────────────────────── */
 function renderChart() {
   const n = criteria.length;
   if (!n) return;
-  const a = angles();
+  const a    = angles();
   const vals = criteria.map((_, i) => scores[`axis${i}`] || 0);
   const hasAny = vals.some(v => v > 0);
   let html = '';
 
-  // Grid rings
   for (let lv = 1; lv <= 5; lv++) {
-    const r = (lv / 5) * MAX_R;
+    const r   = (lv / 5) * MAX_R;
     const pts = a.map(ang => `${CX + r * Math.cos(ang)},${CY + r * Math.sin(ang)}`).join(' ');
     html += `<polygon points="${pts}" fill="none" stroke="rgba(255,255,255,${lv === 5 ? 0.14 : 0.05})" stroke-width="1"/>`;
   }
 
-  // Axis lines + ticks
   for (let i = 0; i < n; i++) {
     html += `<line x1="${CX}" y1="${CY}" x2="${CX + MAX_R * Math.cos(a[i])}" y2="${CY + MAX_R * Math.sin(a[i])}" stroke="rgba(${PALETTE[i % PALETTE.length]},.2)" stroke-width="1.5"/>`;
     for (let lv = 1; lv <= 5; lv++) {
-      const r = (lv / 5) * MAX_R;
-      const x = CX + r * Math.cos(a[i]), y = CY + r * Math.sin(a[i]);
+      const r  = (lv / 5) * MAX_R;
+      const x  = CX + r * Math.cos(a[i]), y = CY + r * Math.sin(a[i]);
       const px = 4 * Math.cos(a[i] + Math.PI / 2), py = 4 * Math.sin(a[i] + Math.PI / 2);
       html += `<line x1="${x - px}" y1="${y - py}" x2="${x + px}" y2="${y + py}" stroke="rgba(255,255,255,.12)" stroke-width="1"/>`;
     }
   }
 
-  // Data polygon
   if (hasAny) {
     const dataPts = vals.map((v, i) => {
       const r = v === 0 ? 0 : (v / 5) * MAX_R;
@@ -376,7 +338,6 @@ function renderChart() {
     html += `<polygon points="${dataPts}" fill="rgba(200,180,255,.1)" stroke="rgba(200,180,255,.45)" stroke-width="2.5" stroke-linejoin="round"/>`;
   }
 
-  // Draggable dots
   for (let i = 0; i < n; i++) {
     const v = vals[i];
     const r = (v / 5) * MAX_R;
@@ -387,36 +348,29 @@ function renderChart() {
     html += `<circle cx="${x}" cy="${y}" r="4" fill="rgb(${c})" style="pointer-events:none"/>`;
   }
 
-  // Labels — positioned around the polygon
   for (let i = 0; i < n; i++) {
-    const c = PALETTE[i % PALETTE.length];
+    const c      = PALETTE[i % PALETTE.length];
     const labelR = MAX_R + 35;
-    const lx = CX + labelR * Math.cos(a[i]);
-    const ly = CY + labelR * Math.sin(a[i]);
+    const lx     = CX + labelR * Math.cos(a[i]);
+    const ly     = CY + labelR * Math.sin(a[i]);
     const anchor = Math.abs(a[i]) < 0.1 || Math.abs(a[i] - Math.PI) < 0.1 ? 'middle'
       : Math.cos(a[i]) < -0.1 ? 'end' : Math.cos(a[i]) > 0.1 ? 'start' : 'middle';
-
-    // Top axis: center above
     let fx = lx, fy = ly;
     if (i === 0 && n > 2) { fx = CX; fy = 18; }
-
     html += `<text x="${fx}" y="${fy}" text-anchor="${i === 0 && n > 2 ? 'middle' : anchor}" fill="rgb(${c})" font-size="14" font-family="-apple-system,BlinkMacSystemFont,sans-serif" font-weight="700">${esc(shortLabel(criteria[i].name))}</text>`;
     if (vals[i] > 0) {
       html += `<text x="${fx}" y="${fy + 16}" text-anchor="${i === 0 && n > 2 ? 'middle' : anchor}" fill="rgba(${c},.6)" font-size="11" font-family="-apple-system,BlinkMacSystemFont,sans-serif" font-weight="500">${vals[i]} / 5</text>`;
     }
   }
 
-  // Hint
   if (!hasAny) {
     html += `<text x="${CX}" y="${CY}" text-anchor="middle" dominant-baseline="middle" fill="rgba(235,235,245,.2)" font-size="13" font-family="-apple-system,BlinkMacSystemFont,sans-serif">Tap an axis or use buttons</text>`;
   }
-
   svg.innerHTML = html;
 }
 
-/* ── Submit ──────────────────────────────────────────────────────── */
+/* ── Submit ─────────────────────────────────────────────────────── */
 async function handleSubmit() {
-  // If not authenticated, prompt for code
   if (!myTeam) {
     pendingSubmit = true;
     showCodeModal();
@@ -425,23 +379,16 @@ async function handleSubmit() {
 
   const metPair = document.getElementById('metPair').value;
   if (!metPair) return showBanner('Select who you met.', 'error');
-
   for (let i = 0; i < criteria.length; i++) {
     if (!scores[`axis${i}`]) return showBanner(`Set a ${criteria[i].name} score.`, 'error');
   }
 
   const notes = document.getElementById('notes').value.trim();
-
   try {
     const res = await fetch('/api/rating', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        raterPair: myTeam.id,
-        ratedPair: metPair,
-        scores:    { ...scores },
-        notes,
-      }),
+      body: JSON.stringify({ raterPair: myTeam.id, ratedPair: metPair, scores: { ...scores }, notes }),
     });
     const data = await res.json();
     if (data.success) {
@@ -456,7 +403,7 @@ async function handleSubmit() {
   } catch { showBanner('Network error.', 'error'); }
 }
 
-/* ── Banner ──────────────────────────────────────────────────────── */
+/* ── Banner ─────────────────────────────────────────────────────── */
 function showBanner(msg, type) {
   const el = document.getElementById('banner');
   el.textContent = msg;
@@ -472,5 +419,5 @@ function hideBanner() {
 
 /* ── Util ────────────────────────────────────────────────────────── */
 function esc(s) {
-  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
